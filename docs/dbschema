@@ -1,0 +1,419 @@
+-- ================================================================
+-- ORBIT Platform - Complete Database Schema
+-- PostgreSQL 15+ compatible
+-- ================================================================
+
+-- ========== USERS & AUTH ==========
+
+CREATE TABLE users (
+    id              BIGSERIAL PRIMARY KEY,
+    username        VARCHAR(30) UNIQUE NOT NULL,
+    email           VARCHAR(255) UNIQUE NOT NULL,
+    password_hash   VARCHAR(255) NOT NULL,
+    phone           VARCHAR(20),
+    avatar_url      VARCHAR(500),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    last_login      TIMESTAMPTZ,
+    is_verified     BOOLEAN DEFAULT FALSE,
+    two_factor_enabled BOOLEAN DEFAULT FALSE,
+    role            VARCHAR(20) CHECK (role IN ('user','creator','moderator','admin')) DEFAULT 'user',
+    language        VARCHAR(10) DEFAULT 'en',
+    theme           VARCHAR(10) CHECK (theme IN ('dark','light')) DEFAULT 'dark'
+);
+
+CREATE TABLE auth_tokens (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token       VARCHAR(512) UNIQUE NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    revoked     BOOLEAN DEFAULT FALSE
+);
+
+-- ========== CHANNELS ==========
+
+CREATE TABLE channels (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        VARCHAR(100) UNIQUE NOT NULL,
+    handle      VARCHAR(30) UNIQUE NOT NULL,
+    description TEXT,
+    avatar_url  VARCHAR(500),
+    banner_url  VARCHAR(500),
+    website     VARCHAR(500),
+    contact_email VARCHAR(255),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW(),
+    is_suspended BOOLEAN DEFAULT FALSE,
+    verified_badge BOOLEAN DEFAULT FALSE
+);
+
+-- Channel statistics materialized or computed view
+CREATE TABLE channel_stats (
+    channel_id          BIGINT PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+    subscriber_count    BIGINT DEFAULT 0,
+    video_count         BIGINT DEFAULT 0,
+    total_views         BIGINT DEFAULT 0,
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== SUBSCRIPTIONS ==========
+
+CREATE TABLE subscriptions (
+    subscriber_channel_id   BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    subscribed_to_channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    subscribed_at           TIMESTAMPTZ DEFAULT NOW(),
+    notify_all              BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (subscriber_channel_id, subscribed_to_channel_id)
+);
+
+-- ========== CATEGORIES & TAGS ==========
+
+CREATE TABLE categories (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(100) UNIQUE NOT NULL,
+    slug        VARCHAR(100) UNIQUE NOT NULL,
+    icon_url    VARCHAR(500),
+    description TEXT
+);
+
+INSERT INTO categories (name, slug) VALUES
+('Music','music'),('Gaming','gaming'),('Science','science'),
+('Technology','technology'),('Sports','sports'),('Education','education'),
+('Entertainment','entertainment'),('News','news'),('IRL','irl'),
+('Just Chatting','just-chatting'),('Art','art'),('Podcasts','podcasts');
+
+CREATE TABLE tags (
+    id      SERIAL PRIMARY KEY,
+    name    VARCHAR(50) UNIQUE NOT NULL,
+    slug    VARCHAR(50) UNIQUE NOT NULL
+);
+
+-- ========== VIDEOS ==========
+
+CREATE TABLE videos (
+    id              BIGSERIAL PRIMARY KEY,
+    channel_id      BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    title           VARCHAR(500) NOT NULL,
+    description     TEXT,
+    duration_seconds INT CHECK (duration_seconds > 0),
+    thumbnail_url   VARCHAR(500),
+    file_url        VARCHAR(500) NOT NULL,
+    visibility      VARCHAR(10) CHECK (visibility IN ('public','unlisted','private','scheduled')) DEFAULT 'public',
+    scheduled_at    TIMESTAMPTZ,
+    category_id     INT REFERENCES categories(id) ON DELETE SET NULL,
+    language        VARCHAR(50) DEFAULT 'en',
+    license         VARCHAR(20) CHECK (license IN ('standard','cc')) DEFAULT 'standard',
+    allow_comments  BOOLEAN DEFAULT TRUE,
+    is_made_for_kids BOOLEAN DEFAULT FALSE,
+    is_short        BOOLEAN DEFAULT FALSE,   -- distinction between normal and short video
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    published_at    TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
+);
+
+CREATE TABLE video_tags (
+    video_id    BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    tag_id      INT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (video_id, tag_id)
+);
+
+CREATE TABLE video_stats (
+    video_id        BIGINT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    views_count     BIGINT DEFAULT 0,
+    likes_count     BIGINT DEFAULT 0,
+    dislikes_count  BIGINT DEFAULT 0,
+    comments_count  BIGINT DEFAULT 0,
+    shares_count    BIGINT DEFAULT 0,
+    saves_count     BIGINT DEFAULT 0,
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== LIKES & DISLIKES ==========
+
+CREATE TABLE video_reactions (
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id    BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    reaction    VARCHAR(10) CHECK (reaction IN ('like','dislike')) NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, video_id)
+);
+
+-- ========== COMMENTS ==========
+
+CREATE TABLE comments (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id        BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    parent_id       BIGINT REFERENCES comments(id) ON DELETE CASCADE,
+    body            TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    is_pinned       BOOLEAN DEFAULT FALSE,
+    is_edited       BOOLEAN DEFAULT FALSE,
+    deleted_at      TIMESTAMPTZ
+);
+
+CREATE TABLE comment_reactions (
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    comment_id  BIGINT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    reaction    VARCHAR(10) CHECK (reaction IN ('like','dislike')) NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, comment_id)
+);
+
+-- ========== PLAYLISTS ==========
+
+CREATE TABLE playlists (
+    id          BIGSERIAL PRIMARY KEY,
+    channel_id  BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    title       VARCHAR(200) NOT NULL,
+    description TEXT,
+    thumbnail_url VARCHAR(500),
+    visibility  VARCHAR(10) CHECK (visibility IN ('public','unlisted','private')) DEFAULT 'public',
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE playlist_videos (
+    playlist_id BIGINT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    video_id    BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    position    INT NOT NULL,
+    added_at    TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (playlist_id, video_id)
+);
+
+-- ========== WATCH HISTORY ==========
+
+CREATE TABLE watch_history (
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id    BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    watched_at  TIMESTAMPTZ DEFAULT NOW(),
+    progress_seconds INT DEFAULT 0,
+    completed   BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (user_id, video_id, watched_at)
+);
+
+-- ========== SAVED / LATER ==========
+
+CREATE TABLE saved_videos (
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id    BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    saved_at    TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, video_id)
+);
+
+-- ========== NOTIFICATIONS ==========
+
+CREATE TABLE notifications (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type            VARCHAR(30) CHECK (type IN ('new_video','live_start','comment_reply','like','subscription','system')) NOT NULL,
+    title           VARCHAR(255) NOT NULL,
+    body            TEXT,
+    data_json       JSONB,
+    is_read         BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== LIVE STREAMS ==========
+
+CREATE TABLE live_streams (
+    id              BIGSERIAL PRIMARY KEY,
+    channel_id      BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    title           VARCHAR(500) NOT NULL,
+    description     TEXT,
+    category_id     INT REFERENCES categories(id) ON DELETE SET NULL,
+    thumbnail_url   VARCHAR(500),
+    stream_key      VARCHAR(255) UNIQUE,
+    stream_server   VARCHAR(255) DEFAULT 'rtmp://live.orbit.com/live',
+    status          VARCHAR(20) CHECK (status IN ('waiting','live','ended','offline')) DEFAULT 'waiting',
+    latency_mode    VARCHAR(10) CHECK (latency_mode IN ('normal','low','ultra_low')) DEFAULT 'normal',
+    enable_dvr      BOOLEAN DEFAULT TRUE,
+    enable_chat_replay BOOLEAN DEFAULT TRUE,
+    scheduled_at    TIMESTAMPTZ,
+    started_at      TIMESTAMPTZ,
+    ended_at        TIMESTAMPTZ,
+    max_viewers     INT DEFAULT 0,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE live_stream_stats (
+    stream_id       BIGINT PRIMARY KEY REFERENCES live_streams(id) ON DELETE CASCADE,
+    current_viewers INT DEFAULT 0,
+    peak_viewers    INT DEFAULT 0,
+    total_chat_messages INT DEFAULT 0,
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== LIVE CHAT ==========
+
+CREATE TABLE live_chat_messages (
+    id          BIGSERIAL PRIMARY KEY,
+    stream_id   BIGINT NOT NULL REFERENCES live_streams(id) ON DELETE CASCADE,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message     TEXT NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== ORBSHIP (MEMBERSHIP) ==========
+
+CREATE TABLE orbship_plans (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(50) NOT NULL,
+    duration_months INT NOT NULL,
+    price_amount DECIMAL(10,2) NOT NULL,
+    currency    VARCHAR(10) DEFAULT 'IRT',
+    features    JSONB
+);
+
+INSERT INTO orbship_plans (name, duration_months, price_amount) VALUES
+('1 Month', 1, 50000),
+('3 Months', 3, 150000);
+
+CREATE TABLE orbship_subscriptions (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id      BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    plan_id         INT NOT NULL REFERENCES orbship_plans(id),
+    started_at      TIMESTAMPTZ DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    is_active       BOOLEAN DEFAULT TRUE,
+    cancelled_at    TIMESTAMPTZ
+);
+
+-- ========== DONATIONS ==========
+
+CREATE TABLE donations (
+    id              BIGSERIAL PRIMARY KEY,
+    donor_user_id   BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    recipient_channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    amount          DECIMAL(12,2) NOT NULL,
+    currency        VARCHAR(10) DEFAULT 'USD',
+    message         TEXT,
+    anonymous       BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== COMMUNITY POSTS ==========
+
+CREATE TABLE community_posts (
+    id          BIGSERIAL PRIMARY KEY,
+    channel_id  BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    content     TEXT NOT NULL,
+    image_url   VARCHAR(500),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at  TIMESTAMPTZ
+);
+
+CREATE TABLE post_reactions (
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_id     BIGINT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+    reaction    VARCHAR(10) CHECK (reaction IN ('like','heart','amazing','laugh')) NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, post_id)
+);
+
+-- ========== ADVERTISEMENTS / PROMOTIONS ==========
+
+CREATE TABLE advertisements (
+    id          BIGSERIAL PRIMARY KEY,
+    title       VARCHAR(255),
+    image_url   VARCHAR(500),
+    target_url  VARCHAR(500),
+    position    VARCHAR(30) CHECK (position IN ('sidebar','video_overlay','banner','feed')),
+    start_date  TIMESTAMPTZ,
+    end_date    TIMESTAMPTZ,
+    is_active   BOOLEAN DEFAULT TRUE,
+    created_by  BIGINT REFERENCES users(id)
+);
+
+-- ========== STICKERS & EMOJI (for live) ==========
+
+CREATE TABLE custom_emojis (
+    id          SERIAL PRIMARY KEY,
+    channel_id  BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    name        VARCHAR(30) NOT NULL,
+    file_url    VARCHAR(500) NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========== FEEDBACK / REPORTS ==========
+
+CREATE TABLE reports (
+    id              BIGSERIAL PRIMARY KEY,
+    reporter_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    target_type     VARCHAR(20) CHECK (target_type IN ('video','comment','channel','post','chat_message')),
+    target_id       BIGINT NOT NULL,
+    reason          TEXT,
+    status          VARCHAR(20) CHECK (status IN ('pending','reviewed','resolved','dismissed')) DEFAULT 'pending',
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at     TIMESTAMPTZ,
+    moderator_id    BIGINT REFERENCES users(id)
+);
+
+-- ========== SETTINGS (User preferences) ==========
+
+CREATE TABLE user_settings (
+    user_id                 BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    email_notifications     BOOLEAN DEFAULT TRUE,
+    push_notifications      BOOLEAN DEFAULT TRUE,
+    comment_email_notify    BOOLEAN DEFAULT TRUE,
+    auto_play_videos        BOOLEAN DEFAULT TRUE,
+    show_mature_content     BOOLEAN DEFAULT FALSE,
+    preferred_quality       VARCHAR(10) DEFAULT 'auto'
+);
+
+-- ========== INDEXES ==========
+CREATE INDEX idx_videos_channel_published ON videos(channel_id, published_at DESC) WHERE visibility='public' AND deleted_at IS NULL;
+CREATE INDEX idx_videos_category ON videos(category_id) WHERE visibility='public';
+CREATE INDEX idx_videos_title_trgm ON videos USING GIN (title gin_trgm_ops); -- for full-text search
+CREATE INDEX idx_comments_video ON comments(video_id, created_at ASC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_comments_parent ON comments(parent_id);
+CREATE INDEX idx_watch_history_user ON watch_history(user_id, watched_at DESC);
+CREATE INDEX idx_notifications_user ON notifications(user_id, created_at DESC, is_read);
+CREATE INDEX idx_subscriptions_to ON subscriptions(subscribed_to_channel_id);
+CREATE INDEX idx_subscriptions_from ON subscriptions(subscriber_channel_id);
+CREATE INDEX idx_live_streams_status ON live_streams(status, started_at);
+CREATE INDEX idx_live_chat_stream ON live_chat_messages(stream_id, created_at);
+CREATE INDEX idx_community_posts_channel ON community_posts(channel_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_saved_videos_user ON saved_videos(user_id, saved_at DESC);
+
+-- ========== FUNCTIONS & TRIGGERS for stats ==========
+-- (simplified, in practice use materialized views or batch updates)
+
+CREATE OR REPLACE FUNCTION update_channel_stats() RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE channel_stats SET subscriber_count = subscriber_count + 1 WHERE channel_id = NEW.subscribed_to_channel_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE channel_stats SET subscriber_count = GREATEST(subscriber_count - 1, 0) WHERE channel_id = OLD.subscribed_to_channel_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_subscriber_count
+AFTER INSERT OR DELETE ON subscriptions
+FOR EACH ROW EXECUTE FUNCTION update_channel_stats();
+
+-- ================================================================
+-- SAMPLE QUERY DEMONSTRATIONS (for reference)
+-- ================================================================
+
+-- Get trending videos: sorted by views in last 7 days (simplified)
+-- SELECT v.*, vs.views_count FROM videos v JOIN video_stats vs ON v.id = vs.video_id
+-- WHERE v.visibility='public' AND v.published_at > NOW() - INTERVAL '7 days'
+-- ORDER BY vs.views_count DESC LIMIT 50;
+
+-- Get a video with all related data
+-- SELECT v.*, c.name as channel_name, c.avatar_url, cat.name as category_name,
+--        vs.views_count, vs.likes_count, vs.comments_count
+-- FROM videos v
+-- JOIN channels c ON v.channel_id = c.id
+-- LEFT JOIN categories cat ON v.category_id = cat.id
+-- LEFT JOIN video_stats vs ON v.id = vs.video_id
+-- WHERE v.id = $1 AND v.visibility = 'public';
