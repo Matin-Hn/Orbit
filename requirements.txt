@@ -1,2 +1,6 @@
 fastapi[all]
-
+jwt
+pwdlib==0.3.0
+pwdlib[argon2]
+pwdlib[bcrypt]
+sqlalchemy
