@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - ./postgres/data:/var/lib/postgres/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "postgres"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - 5432:5432
+  
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: backend
+    depends_on:
+      - db
+    environment:
+      - SECRET_KEY = K3IG57oVaoO/d0qzs/JZh1LmGHE4YYI0xPP1xm+oANc=
+      - SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@db:5432/postgres"
+
+    ports:
+      - 8000:8000
+    command: bach -c 'fastapi dev --host 0.0.0.0 --port 8000'
+    volumes:
+      - ./app:/usr/src/app
