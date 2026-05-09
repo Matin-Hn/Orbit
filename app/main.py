@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi_swagger import patch_fastapi
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints.users import router as users_router 
 from app.api.endpoints.login import router as login_router 
@@ -26,6 +27,14 @@ app = FastAPI(
 )
 patch_fastapi(app)
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 app.include_router(login_router)
 app.include_router(users_router)
