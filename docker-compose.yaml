@@ -25,11 +25,12 @@ services:
     depends_on:
       - db
     environment:
-      - SECRET_KEY = K3IG57oVaoO/d0qzs/JZh1LmGHE4YYI0xPP1xm+oANc=
-      - SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@db:5432/postgres"
+      - SECRET_KEY=K3IG57oVaoO/d0qzs/JZh1LmGHE4YYI0xPP1xm+oANc=
+      - SQLALCHEMY_DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - ALGORITHM=HS256
 
     ports:
       - 8000:8000
-    command: bach -c 'fastapi dev --host 0.0.0.0 --port 8000'
+    command: bash -c 'fastapi dev --host 0.0.0.0 --port 8000 main.py'
     volumes:
       - ./app:/usr/src/app
