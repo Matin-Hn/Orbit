@@ -8,7 +8,7 @@ from pydantic_settings import SettingsConfigDict
 
 
 class PasswordValidationMixin:
-    @field_validator('password')
+    @field_validator('password', check_fields=False)
     @classmethod
     def validate_password_complexity(cls, v: str) -> str:
         pattern = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,32}$"
@@ -20,7 +20,7 @@ class PasswordValidationMixin:
             )
         return v
 
-    @field_validator("confirm_password")
+    @field_validator("confirm_password", check_fields=False)
     @classmethod
     def passwords_match(cls, v, info):
         password = info.data.get("password")
@@ -39,13 +39,15 @@ class UserBase(BaseModel):
 class UserCreate(UserBase, PasswordValidationMixin):
     password: str = Field(...)
     confirm_password: str = Field(description="Confirm password")
-    phone: str
-    avatar_url = str
+    # -- TODO: Add regex for IR phone numbers
+    phone: Optional[str] = Field(
+        min_length=11, max_length=11
+    )
+    avatar_url: Optional[str] = None
 
 
 class UserLogin(BaseModel):
     username: str
-    email: str
     password: str
 
 
@@ -53,7 +55,7 @@ class UserUpdate(UserBase, PasswordValidationMixin):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: str
-    avatar_url = str
+    avatar_url: Optional[str] = None
     password: Optional[str] = Field(
         min_length=6, description="New password (optional)"
     )
@@ -61,9 +63,9 @@ class UserUpdate(UserBase, PasswordValidationMixin):
 
 class UserResponse(UserBase):
     id: int
-    is_active: bool
-    created_date: datetime
-    updated_date: datetime
+    email: EmailStr
+    phone: str | None
+    avatar_url: Optional[str] = None
 
     model_config = SettingsConfigDict(from_attributes=True)
 
@@ -72,7 +74,7 @@ class UserInDBBase(UserBase):
     id: int
     password_hash: str
     phone: str
-    avatar_url: str
+    avatar_url: Optional[str] = None
     last_login: datetime
     is_verified: bool
     is_active: bool
@@ -85,17 +87,3 @@ class UserInDBBase(UserBase):
 
     model_config = SettingsConfigDict(from_attributes=True)
 
-
-class UserToken(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str
-
-
-class UserTokenData(BaseModel):
-    user_id: Optional[int] = None
-    username: Optional[str] = None
-
-
-class UserRefreshToken(BaseModel):
-    refresh: str = Field(..., description="refresh token of the user")
