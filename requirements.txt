@@ -1,6 +1,9 @@
 fastapi[all]
-jwt
+Pyjwt
 pwdlib==0.3.0
 pwdlib[argon2]
 pwdlib[bcrypt]
 sqlalchemy
+fastapi-swagger==0.4.45
+psycopg2-binary
+alembic
