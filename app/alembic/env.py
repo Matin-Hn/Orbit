@@ -32,7 +32,6 @@ else:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from app.models.user import *
-from app.models.refresh_token import *
 
 target_metadata = Base.metadata
 
