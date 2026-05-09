@@ -54,6 +54,9 @@ your_project_name/
     │           ├── __init__.py
     │           ├── chat.py
     │           └── stream_status.py
+    ├── crud/
+    │   ├── users_crud.py
+    │   └── videos.py
     ├── services/
     │   ├── __init__.py
     │   ├── channel_service.py
