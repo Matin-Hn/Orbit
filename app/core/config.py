@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     )
     SECRET_KEY: str
     SQLALCHEMY_DATABASE_URL: str
-    REDIS_URL: str
+    ALGORITHM: str
 
 
 settings = Settings()
