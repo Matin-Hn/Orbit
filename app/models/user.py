@@ -1,14 +1,20 @@
+import enum
 from sqlalchemy import (
      Column,
      String,
      Boolean,
      DateTime,
      func,
-     Integer
+     Integer,
+     Enum
 )
-
 from app.core.database import Base
 
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    MODERATOR = "moderator"
+    USER = "user"
 
 class User(Base):
     __tablename__ = "users"
@@ -22,7 +28,7 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     two_factor_enables = Column(Boolean, default=False)
-    role = Column(String(20), default="user")
+    role = Column(Enum(UserRole), default=UserRole.USER)
     language = Column(String(10), default="en")
     theme = Column(String(10), default="dark")
     created_date = Column(DateTime, server_default=func.now())
