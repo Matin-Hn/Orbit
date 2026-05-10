@@ -29,8 +29,10 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     two_factor_enables = Column(Boolean, default=False)
     role = Column(Enum(UserRole), default=UserRole.USER)
+    created_by_admin_id = Column(Integer, nullable=True)  # Track who created this admin
     language = Column(String(10), default="en")
     theme = Column(String(10), default="dark")
     created_date = Column(DateTime, server_default=func.now())
     updated_date = Column(DateTime, server_default=func.now(),server_onupdate=func.now())
+
 
