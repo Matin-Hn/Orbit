@@ -26,6 +26,7 @@ class User(Base):
     avatar_url = Column(String(500))
     last_login = Column(DateTime)
     is_verified = Column(Boolean, default=False)
+    handle = Column(String, default=None)
     is_active = Column(Boolean, default=True)
     two_factor_enables = Column(Boolean, default=False)
     role = Column(Enum(UserRole), default=UserRole.USER)
@@ -34,5 +35,3 @@ class User(Base):
     theme = Column(String(10), default="dark")
     created_date = Column(DateTime, server_default=func.now())
     updated_date = Column(DateTime, server_default=func.now(),server_onupdate=func.now())
-
-
