@@ -28,7 +28,7 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     two_factor_enables = Column(Boolean, default=False)
-    # role = Column(Enum(UserRole), default=UserRole.USER)
+    role = Column(Enum(UserRole), default=UserRole.USER)
     language = Column(String(10), default="en")
     theme = Column(String(10), default="dark")
     created_date = Column(DateTime, server_default=func.now())
