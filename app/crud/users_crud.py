@@ -27,6 +27,9 @@ def create_user(db: Session, user:UserCreate):
     db.refresh(db_user)
     return db_user
 
+def delete_user_from_db(db: Session, db_user: User):
+    db.delete(db_user)
+    db.commit()
 
 # Dummy hash to use for timing attack prevention when user is not found
 # This is an Argon2 hash of a random password, used to ensure constant-time comparison

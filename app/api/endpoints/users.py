@@ -19,7 +19,11 @@ from app.services.auth_service import (
     get_current_user_from_cookie,
     require_admin
 )
-from app.crud.users_crud import create_admin_user, get_user_by_id
+from app.crud.users_crud import (
+    create_admin_user,
+    get_user_by_id,
+    delete_user_from_db
+)
 
 router = APIRouter(
     prefix="/users",
@@ -43,9 +47,8 @@ async def get_current_user_info(
     return current_user
 
 
-@router.get("/")
-def retrieve_users(
-    admin: User = Depends(require_admin),
+@router.get("/", dependencies=[Depends(require_admin)])
+async def retrieve_users(
     db: Session = Depends(get_db)
 ):
     """Retrieve all users"""
@@ -53,7 +56,7 @@ def retrieve_users(
 
 
 @router.get("/{user_id}", response_model=UserPublic)
-def retrieve_user(
+async def retrieve_user(
     user_id: int,
     current_user: User = Depends(get_current_user_from_cookie),
     db: Session = Depends(get_db)
@@ -68,13 +71,13 @@ def retrieve_user(
     if check_admin_or_author(user_id, current_user):
         return db_user
 
-@router.put("/{user_id}")
-def update_user(
+@router.put("/{user_id}", response_model=UserPublic)
+async def update_user(
     request: UserUpdate,
     current_user: User = Depends(get_current_user_from_cookie),
     db: Session = Depends(get_db)
 ):
-    db_user = db.query(User).filter(User.id == request.id).one_or_none()
+    db_user = get_user_by_id(db, request.id)
     if not db_user:
         raise HTTPException(
             status_code=404,
@@ -88,6 +91,22 @@ def update_user(
         db.commit()
         db.refresh(db_user)
         return db_user
+
+
+@router.delete("/{user_id}", response_model=UserPublic)
+async def delete_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user_from_cookie),
+    db: Session = Depends(get_db)
+):
+    db_user = get_user_by_id(db, user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if check_admin_or_author(user_id, current_user):
+        delete_user_from_db(user_id, db_user)
+
+        raise HTTPException(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
