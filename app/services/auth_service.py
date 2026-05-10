@@ -3,13 +3,16 @@ from typing import Any
 import uuid
 import hashlib
 import jwt
+from jwt.exceptions import DecodeError,InvalidSignatureError, ExpiredSignatureError
 from datetime import timedelta, datetime, timezone
 
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Request, status, Depends
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.user import User, UserRole
+from app.api.deps import get_db
 
 
 def create_access_token(
@@ -63,3 +66,68 @@ def decode_refresh_token(refresh_token: str) -> str:
         return user_id
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Invalid refresh token")
+    
+
+
+async def get_current_user_from_cookie(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> User:
+    """Alternative: Extract JWT from cookie"""
+    
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    
+    # Same decoding logic as above
+    try:
+        payload = jwt.decode(
+            token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
+        user_id: int = int(payload.get("sub"))
+        
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token, user_id is missing"
+            )
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive"
+            )
+        return user
+            
+    except DecodeError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, decode failed")
+    except InvalidSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, invalid signature")
+    except ExpiredSignatureError:
+        
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, token expired")        
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Authentication error, {e}")
+
+    
+    
+
+    
+
+
+def require_admin(current_user: User = Depends(get_current_user_from_cookie)):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required"
+        )
+    return current_user
+
+
