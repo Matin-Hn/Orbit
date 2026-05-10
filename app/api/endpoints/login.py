@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.responses import JSONResponse
 
-from app.schemas.user import UserCreate, UserLogin, UserResponse
+from app.schemas.user import UserCreate, UserLogin
 from app.api.deps import get_db
 from app.crud.users_crud import (
     get_user_by_username,
@@ -55,7 +55,7 @@ async def register_user(
 
     create_user(db, user_data)
     
-    return JSONResponse(
+    raise HTTPException(
         status_code=status.HTTP_201_CREATED,
         content="User successfully created"
     )
