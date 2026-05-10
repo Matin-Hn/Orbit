@@ -66,14 +66,6 @@ class UserUpdate(UserBase, PasswordValidationMixin):
     )
 
 
-class UserResponse(UserBase):
-    id: int
-    email: EmailStr
-    phone: str | None
-    avatar_url: Optional[str] = None
-
-    model_config = SettingsConfigDict(from_attributes=True)
-
 
 class UserInDBBase(UserBase):
     id: int
@@ -91,4 +83,25 @@ class UserInDBBase(UserBase):
     updated_date: datetime
 
     model_config = SettingsConfigDict(from_attributes=True)
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    phone: Optional[str] = None
+    avatar_url: Optional[str] = None
+    last_login: Optional[datetime] = None
+    is_verified: bool
+    is_active: bool
+    two_factor_enables: bool
+    role: str
+    language: str
+    theme: str
+    created_date: datetime
+    updated_date: datetime
+    
+    class Config:
+        from_attributes = True
+
 
