@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from pydantic_settings import SettingsConfigDict
 
+from app.models.user import UserRole
 
 
 class PasswordValidationMixin:
@@ -57,6 +58,7 @@ class UserLogin(BaseModel):
 
 
 class UserUpdate(UserBase, PasswordValidationMixin):
+    id: int
     username: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: str
@@ -85,23 +87,26 @@ class UserInDBBase(UserBase):
     model_config = SettingsConfigDict(from_attributes=True)
 
 
-class UserResponse(BaseModel):
+class UserPublic(UserBase):
+    """Public user information - safe to return to clients"""
+    
+    # Basic identification
     id: int
-    username: str
-    email: EmailStr
+    
+    # Profile information
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
-    last_login: Optional[datetime] = None
+    
+    # Status flags (safe to expose)
     is_verified: bool
     is_active: bool
-    two_factor_enables: bool
-    role: str
+    
+    # User preferences
+    role: Optional[UserRole] = None
     language: str
     theme: str
+    
+    # Metadata
+    last_login: Optional[datetime] = None
     created_date: datetime
     updated_date: datetime
-    
-    class Config:
-        from_attributes = True
-
-
