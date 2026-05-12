@@ -138,6 +138,17 @@ def get_refreshed_token(request: Request, response: Response):
 
 @router.post("/logout")
 def logout_user(response: Response):
-    response.delete_cookie("refresh_token")
-    response.delete_cookie("access_token")
+    response.delete_cookie(
+        key="access_token",
+        httponly=True,
+        secure=False,  # Match your login configuration
+        samesite="lax"
+    )
+    
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=False,
+        samesite="lax"
+    )
     return {"Logout was successful"}
