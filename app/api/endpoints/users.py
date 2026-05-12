@@ -23,6 +23,7 @@ from app.services.auth_service import (
 from app.crud.users_crud import (
     create_admin_user,
     get_user_by_id,
+    get_user_by_email,
     delete_user_from_db
 )
 
@@ -124,23 +125,40 @@ async def retrieve_user(
 @router.put("/{user_id}", response_model=UserPublic)
 async def update_user(
     request: UserUpdate,
+    user_id: int,
     current_user: User = Depends(get_current_user_from_cookie),
     db: Session = Depends(get_db)
 ):
-    db_user = get_user_by_id(db, request.id)
+    db_user = get_user_by_id(db, user_id)
     if not db_user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-    if check_admin_or_author(request.id, current_user):
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    is_admin, is_self = (check_admin_or_author(user_id, current_user))
+    
+    # Filter updates based on permissions
+    if not is_admin and is_self:
+        # Non-admin self update: strip admin fields
+        admin_fields = {"role", "is_active", "is_verified"}
+        request_json = {k: v for k, v in request.model_dump(exclude_unset=True).items() 
+                       if k not in admin_fields}
+    else:
         request_json = request.model_dump(exclude_unset=True)
-        for key, value in request_json.items():
+    
+    # Apply updates and validate
+    for key, value in request_json.items():
+        if value is not None:
             setattr(db_user, key, value)
-        db_user.updated_date = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
-        db.commit()
-        db.refresh(db_user)
-        return db_user
+    
+    # Email uniqueness check
+    if "email" in request_json and request_json["email"] != db_user.email:
+        email_existing = get_user_by_email(db, request_json["email"])
+        if email_existing and email_existing.id != user_id:
+            raise HTTPException(status_code=409, detail="Email already exists")
+    
+    db_user.updated_date = datetime.now(timezone.utc).replace(microsecond=0)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
 
 @router.delete("/{user_id}", response_model=UserPublic)
