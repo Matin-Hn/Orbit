@@ -5,7 +5,8 @@ from fastapi_swagger import patch_fastapi
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints.users import router as users_router 
-from app.api.endpoints.login import router as login_router 
+from app.api.endpoints.login import router as login_router
+from app.api.endpoints.videos import router as videos_router
 from app.core.database import Base, engine
 
 
@@ -38,3 +39,4 @@ app.add_middleware(
 
 app.include_router(login_router)
 app.include_router(users_router)
+app.include_router(videos_router)
