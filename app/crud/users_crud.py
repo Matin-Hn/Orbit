@@ -61,7 +61,7 @@ def create_admin_user(db: Session, email: str, username: str, password: str, cre
     admin_user = User(
         email=email,
         username=username,
-        hashed_password=hashed_password,
+        password_hash=hashed_password,
         role=UserRole.ADMIN,
         created_by_admin_id=creator_admin_id
     )
