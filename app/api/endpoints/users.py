@@ -1,8 +1,8 @@
-from typing import Any
+from typing import Any, Optional
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
-from app.schemas.user import UserUpdate, UserPublic
-
+from sqlalchemy import and_
+from app.schemas.user import UserUpdate, UserPublic, UserListResponse
 from fastapi import (
     APIRouter,
     Depends,
@@ -47,12 +47,61 @@ async def get_current_user_info(
     return current_user
 
 
-@router.get("/", dependencies=[Depends(require_admin)])
+@router.get("/", dependencies=[Depends(require_admin)], response_model=UserListResponse)
 async def retrieve_users(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    search: Optional[str] = Query(None, description="Search by username (partial, case-insensitive)"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    role: Optional[str] = Query(None, description="Filter by role (exact match)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
 ):
-    """Retrieve all users"""
-    return db.query(User).all()
+    """Retrieve all users with optimized filtering and pagination"""
+    query = db.query(User)
+
+    # Build filters efficiently
+    filters = []
+    
+    # 1. Search on username (case-insensitive partial match)
+    # With pg_trgm, ILIKE queries use the trigram index
+    if search:
+        # Method 1: Simple ILIKE (uses trigram index)
+        filters.append(User.username.ilike(f"%{search}%"))
+        
+        # Method 2: Alternative using similarity for better results (optional)
+        # query = query.filter(func.similarity(User.username, search) > 0.3)
+        # query = query.order_by(func.similarity(User.username, search).desc())
+    
+    # 2. Filter by is_active
+    if is_active is not None:
+        filters.append(User.is_active == is_active)
+    
+    # 3. Filter by role
+    if role:
+        filters.append(User.role == role)
+    
+    # Apply all filters at once (Postgres optimizes this)
+    if filters:
+        query = query.filter(and_(*filters))
+    
+    # Get total count before pagination
+    total_count = query.count()
+    
+    # Add ordering (important for consistent pagination)
+    query = query.order_by(User.created_date.desc(), User.id.desc())
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    users = query.offset(offset).limit(per_page).all()
+    
+    # Return with pagination metadata
+    return {
+        "users": users,
+        "total": total_count,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total_count + per_page - 1) // per_page  # Ceiling division
+    }
 
 
 @router.get("/{user_id}", response_model=UserPublic)
