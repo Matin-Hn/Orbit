@@ -133,3 +133,7 @@ pyproject.toml.local
 # PDM
 .pdm.toml
 __pypackages__/
+
+
+# minio
+minio/*
