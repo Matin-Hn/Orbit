@@ -172,7 +172,7 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     
     if check_admin_or_author(user_id, current_user):
-        delete_user_from_db(user_id, db_user)
+        delete_user_from_db(db, db_user)
 
         raise HTTPException(status_code=status.HTTP_204_NO_CONTENT)
 
