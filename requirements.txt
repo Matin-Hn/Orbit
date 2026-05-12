@@ -7,3 +7,5 @@ sqlalchemy
 fastapi-swagger==0.4.45
 psycopg2-binary
 alembic
+
+boto3  # s3 for Development

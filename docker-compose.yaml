@@ -17,6 +17,40 @@ services:
     ports:
       - 5432:5432
   
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"  # S3 API port
+      - "9001:9001"  # Web console port
+    volumes:
+      - ./minio/data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+
+  create-bucket:
+    image: minio/mc:latest
+    container_name: create-bucket
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 minioadmin minioadmin123;
+      mc mb local/video-bucket --ignore-existing;
+      mc anonymous set download local/video-bucket;
+      echo '✅ Bucket created successfully';
+      exit 0;
+      "
+  
   backend:
     build: 
       context: .
@@ -24,11 +58,19 @@ services:
     container_name: backend
     depends_on:
       - db
+      - minio
     environment:
       - SECRET_KEY=K3IG57oVaoO/d0qzs/JZh1LmGHE4YYI0xPP1xm+oANc=
       - SQLALCHEMY_DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - ALGORITHM=HS256
-
+      # S3/MinIO configuration
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin123
+      - S3_BUCKET_NAME=video-bucket
+      - S3_REGION=us-east-1
+      - S3_USE_PATH_STYLE=true
+      - S3_USE_SSL=false
     ports:
       - 8000:8000
     command: bash -c 'fastapi dev --host 0.0.0.0 --port 8000 main.py'
