@@ -31,14 +31,10 @@ def check_admin_or_author(
         HTTPException: 403 if user is not authorized
     """
     # Admin has full access
-    if current_user.role == UserRole.ADMIN:
-        return True
+    is_admin = current_user.role == UserRole.ADMIN
+    is_self = current_user.id == object_id
     
-    # Check if user is the author
-    if current_user.id != object_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You don't have permission to access this {resource_type}"
-        )
-    
-    return True
+    # Authorization
+    if not (is_admin or is_self):
+        raise HTTPException(status_code=403, detail=f"You have not access to this {resource_type}")
+    return is_admin, is_self
