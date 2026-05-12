@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from pydantic_settings import SettingsConfigDict
@@ -58,15 +58,16 @@ class UserLogin(BaseModel):
 
 
 class UserUpdate(UserBase, PasswordValidationMixin):
-    id: int
     username: Optional[str] = None
     email: Optional[EmailStr] = None
-    phone: str
+    phone: Optional[str] = None
     avatar_url: Optional[str] = None
-    password: Optional[str] = Field(
-        min_length=6, description="New password (optional)"
-    )
 
+    # Admin admins can update these
+    handle: Optional[str] = None
+    is_verified: Optional[bool] = None
+    is_active: Optional[bool] = None
+    role: Optional[str] = None
 
 
 class UserInDBBase(UserBase):
@@ -110,3 +111,14 @@ class UserPublic(UserBase):
     last_login: Optional[datetime] = None
     created_date: datetime
     updated_date: datetime
+
+
+class PaginatedResponse(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class UserListResponse(PaginatedResponse):
+    users: List[UserPublic]
