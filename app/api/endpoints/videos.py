@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Dict
+from typing import Optional
 import uuid
 
 from app.services.auth_service import get_current_user_from_cookie, get_current_channel
@@ -11,7 +11,8 @@ from app.models.user import User                     # adjust
 from app.schemas.video import (
     UploadUrlResponse,
     VideoCompleteRequest,
-    VideoCompleteResponse
+    VideoCompleteResponse,
+    VideoResponse
 )
 from app.services.storage import storage_service
 from app.core.config import settings
@@ -20,20 +21,21 @@ from app.tasks.video_tasks import transcode_video_task
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
-@router.get("/{video_id}")
-async def get_video(video_id: int, db: Session = Depends(get_db)):
+@router.get("/{video_id}", response_model=VideoResponse)
+async def get_video(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_cookie)
+):
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
-        raise HTTPException(status_code=404)
-    return {
-        "id": video.id,
-        "title": video.title,
-        "status": video.status,
-        "hls_url": video.hls_manifest_url,
-        "poster_url": video.poster_url,
-        "duration": video.duration_seconds
-    }
-
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Check visibility permissions
+    if video.visibility == "private" and (not current_user or video.channel.user_id != current_user.id):
+        raise HTTPException(status_code=403, detail="Video is private")
+    
+    return video
 
 # Helper: generate a unique S3 key for the video
 def generate_video_key(original_filename: str) -> str:
@@ -168,7 +170,7 @@ async def complete_upload(
         is_made_for_kids=payload.is_made_for_kids or False,
         is_short=payload.is_short or False
     )
-    
+
     if payload.thumbnail_key:
         # Optionally verify the thumbnail exists
         if await storage_service.object_exists(payload.thumbnail_key):
