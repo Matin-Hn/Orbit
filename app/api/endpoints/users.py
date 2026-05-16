@@ -20,7 +20,7 @@ from app.services.auth_service import (
     get_current_user_from_cookie,
     require_admin
 )
-from app.crud.users_crud import (
+from app.crud.users import (
     create_admin_user,
     get_user_by_id,
     get_user_by_email,
