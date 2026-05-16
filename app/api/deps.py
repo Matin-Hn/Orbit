@@ -1,7 +1,8 @@
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from app.models.user import User, UserRole
 from app.core.database import SessionLocal
+
 
 def get_db():
     db = SessionLocal()
@@ -38,3 +39,5 @@ def check_admin_or_author(
     if not (is_admin or is_self):
         raise HTTPException(status_code=403, detail=f"You have not access to this {resource_type}")
     return is_admin, is_self
+
+
