@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.user import User, UserRole
+from app.models.channel import Channel
 from app.api.deps import get_db
 
 
@@ -116,11 +117,6 @@ async def get_current_user_from_cookie(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Authentication error, {e}")
 
-    
-    
-
-    
-
 
 def require_admin(current_user: User = Depends(get_current_user_from_cookie)):
     if current_user.role != UserRole.ADMIN:
@@ -131,3 +127,14 @@ def require_admin(current_user: User = Depends(get_current_user_from_cookie)):
     return current_user
 
 
+async def get_current_channel(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_cookie)
+) -> Channel:
+    db_channel = db.query(Channel).filter(Channel.user_id == current_user.id).first()
+    if not db_channel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="You do not have an active channel"
+        )
+    return db_channel
