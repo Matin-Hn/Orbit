@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.schemas.user import UserCreate, UserLogin
 from app.api.deps import get_db
-from app.crud.users_crud import (
+from app.crud.users import (
     get_user_by_username,
     get_user_by_email,
     create_user,
@@ -16,7 +16,7 @@ from app.services.auth_service import create_refresh_token, create_access_token,
 from app.core.security import get_password_hash
 
 
-router = APIRouter()
+router = APIRouter(tags=["login"])
 
 @router.post("/register")
 async def register_user(
