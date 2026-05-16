@@ -13,7 +13,21 @@ class Video(Base):
     description = Column(Text, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
     thumbnail_url = Column(String(500), nullable=True)
+
+    # New columns for the async flow
     file_url = Column(String(500), nullable=False)
+    original_filename = Column(String(255), nullable=True)
+    file_size = Column(BigInteger, nullable=True)          # bytes
+    mime_type = Column(String(100), nullable=True)
+    original_key = Column(String(500), nullable=False)     # S3 key of uploaded file
+    
+    hls_manifest_url = Column(String(500), nullable=True)  # URL to master.m3u8
+    poster_url = Column(String(500), nullable=True)        # generated poster image
+    processing_error = Column(Text, nullable=True)
+
+
+
+    status = Column(String(20), nullable=False)
     visibility = Column(String(10), nullable=False, default="public")
     scheduled_at = Column(TIMESTAMP(timezone=True), nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
@@ -48,7 +62,7 @@ class Video(Base):
         if self.deleted_at:
             return False
         if self.visibility == "scheduled" and self.scheduled_at:
-            return self.scheduled_at <= datetime.utcnow()
+            return self.scheduled_at <= datetime.now(datetime.timezone.utc)()
         return self.visibility != "private"
     
     def __repr__(self):

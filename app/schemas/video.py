@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from enum import Enum
 
 class VisibilityEnum(str, Enum):
@@ -36,7 +36,6 @@ class VideoBase(BaseModel):
 
 # Create video request
 class VideoCreate(VideoBase):
-    channel_id: int  # Will be taken from authenticated user
     duration_seconds: Optional[int] = Field(None, gt=0, le=43200)  # Max 12 hours
     
     @validator("duration_seconds")
@@ -100,26 +99,28 @@ class VideoListResponse(BaseModel):
     page_size: int
     has_next: bool
 
-# Upload video response (after S3 upload)
-class VideoUploadResponse(BaseModel):
-    video_id: int
-    title: str
-    file_url: str
-    upload_url: str  # Presigned URL for direct upload
-    expires_in: int = 3600
-    message: str
+class UploadUrlResponse(BaseModel):
+    upload_url: str
+    object_key: str
+    expires_in: int
 
-# Search/filter parameters
-class VideoFilterParams(BaseModel):
-    channel_id: Optional[int] = None
+class VideoCompleteRequest(BaseModel):
+    object_key: str
+    etag: str                     # not stored but can be validated
+    original_filename: str
+    file_size: int
+    mime_type: str
+    title: str
+    description: Optional[str] = None
+    visibility: Optional[str] = "public"
     category_id: Optional[int] = None
-    visibility: Optional[VisibilityEnum] = None
-    is_short: Optional[bool] = None
-    query: Optional[str] = Field(None, min_length=1, max_length=100)
-    from_date: Optional[datetime] = None
-    to_date: Optional[datetime] = None
-    min_duration: Optional[int] = Field(None, gt=0)
-    max_duration: Optional[int] = Field(None, gt=0)
-    
-    class Config:
-        arbitrary_types_allowed = True
+    language: Optional[str] = "en"
+    allow_comments: Optional[bool] = True
+    is_made_for_kids: Optional[bool] = False
+    is_short: Optional[bool] = False
+    thumbnail_key: Optional[str] = None
+
+class VideoCompleteResponse(BaseModel):
+    video_id: int
+    status: str
+    message: str
