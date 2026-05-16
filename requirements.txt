@@ -9,6 +9,7 @@ psycopg2-binary
 alembic
 celery[redis]
 redis
+Pillow>=10.0.0
 
 
 boto3  # s3 for Development
