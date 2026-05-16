@@ -32,6 +32,9 @@ else:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from app.models.user import *
+from app.models.video import *
+from app.models.channel import *
+from app.models.category import *
 
 target_metadata = Base.metadata
 

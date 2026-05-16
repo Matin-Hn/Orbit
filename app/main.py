@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints.users import router as users_router 
 from app.api.endpoints.login import router as login_router
 from app.api.endpoints.videos import router as videos_router
+from app.api.endpoints.channels import router as channels_router
+from app.api.endpoints.categories import router as categories_router
 from app.core.database import Base, engine
 
 
@@ -31,7 +33,7 @@ patch_fastapi(app)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost"],
+    allow_origins=["*"],   # TODO: Set it in prod
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -40,3 +42,5 @@ app.add_middleware(
 app.include_router(login_router)
 app.include_router(users_router)
 app.include_router(videos_router)
+app.include_router(channels_router)
+app.include_router(categories_router)
