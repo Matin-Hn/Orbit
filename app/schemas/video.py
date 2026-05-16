@@ -63,13 +63,21 @@ class VideoUpdate(BaseModel):
         return v
 
 # Video response schema
-class VideoResponse(VideoBase):
+class VideoResponse(BaseModel):
     id: int
-    channel_id: int
-    duration_seconds: Optional[int] = None
-    thumbnail_url: Optional[str] = None
-    file_url: str
+    status: str
+    duration_seconds: Optional[int]
+    thumbnail_url: Optional[str]
+    hls_manifest_url: Optional[str]
+    sprite_url: Optional[str]
+    sprite_vtt_url: Optional[str]
+    sprite_tile_width: Optional[int]
+    sprite_tile_height: Optional[int]
+    sprite_columns: Optional[int]
+    sprite_rows: Optional[int]
     created_at: datetime
+    channel_id: int
+    file_url: str
     published_at: Optional[datetime] = None
     updated_at: datetime
     

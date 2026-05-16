@@ -25,6 +25,13 @@ class Video(Base):
     poster_url = Column(String(500), nullable=True)        # generated poster image
     processing_error = Column(Text, nullable=True)
 
+    # columns for sprite image
+    sprite_url = Column(String(500), nullable=True)      # URL to sprite image (e.g., sprites.jpg)
+    sprite_vtt_url = Column(String(500), nullable=True)  # URL to WebVTT file for sprite mapping
+    sprite_tile_width = Column(Integer, nullable=True)   # width of each tile in pixels
+    sprite_tile_height = Column(Integer, nullable=True)  # height of each tile in pixels
+    sprite_columns = Column(Integer, nullable=True)      # number of columns in sprite grid
+    sprite_rows = Column(Integer, nullable=True)         # number of rows in sprite grid
 
 
     status = Column(String(20), nullable=False)
