@@ -30,16 +30,19 @@ class ChannelUpdate(BaseModel):
     verified_badge: Optional[bool] = None
 
 # Schema for response (includes all fields)
-class ChannelResponse(ChannelBase):
+class ChannelResponse(BaseModel):
     id: int
     user_id: int
-    created_at: datetime
-    updated_at: datetime
+    name: str
+    description: Optional[str] = None
+    avatar_url: Optional[str] = None
+    banner_url: Optional[str] = None
     is_suspended: bool
-    verified_badge: bool
-
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
     class Config:
-        from_attributes = True  # For Pydantic v2 (was orm_mode in v1)
+        from_attributes = True
 
 # Schema for database operation (internal use)
 class ChannelInDB(ChannelResponse):
