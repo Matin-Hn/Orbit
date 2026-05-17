@@ -114,7 +114,6 @@ class UploadUrlResponse(BaseModel):
 
 class VideoCompleteRequest(BaseModel):
     object_key: str
-    etag: str                     # not stored but can be validated
     original_filename: str
     file_size: int
     mime_type: str
