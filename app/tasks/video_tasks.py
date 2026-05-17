@@ -2,6 +2,7 @@ import os
 import subprocess
 import tempfile
 import json
+import shutil
 import math
 from PIL import Image  
 import logging
@@ -10,15 +11,21 @@ from celery import shared_task
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.models.video import Video
 from app.services.storage import storage_service
 from app.core.config import settings
+from app.core.celery_app import celery_app
+from app.models.channel import Channel
+from app.models.video import Video
+from app.models.user import User
+from app.models.category import Category
 
 logger = logging.getLogger(__name__)
 
 # app/tasks/video_tasks.py – update the main task
 
-@shared_task(bind=True, max_retries=2)
+
+
+@celery_app.task(bind=True, max_retries=2)
 def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
     """
     Celery task:
@@ -81,18 +88,18 @@ def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
             storage_service.upload_file(vtt_local_path, vtt_remote_key, content_type="text/vtt")
 
             # Generate or use user-uploaded thumbnail
-            if video.thumbnail_key:
-                # User provided custom thumbnail
-                video.thumbnail_url = storage_service.get_public_url(video.thumbnail_key)
-                logger.info(f"Using user-uploaded thumbnail: {video.thumbnail_key}")
-            else:
+            # if video.thumbnail_key:
+            #     # User provided custom thumbnail
+            #     video.thumbnail_url = storage_service.get_public_url(video.thumbnail_key)
+            #     logger.info(f"Using user-uploaded thumbnail: {video.thumbnail_key}")
+            # else:
                 # Generate poster from first frame
-                poster_path = os.path.join(tmpdir, "poster.jpg")
-                generate_thumbnail(input_path, poster_path, time_seconds=0)
-                poster_key = f"processed/{video_id}/poster.jpg"
-                storage_service.upload_file(poster_path, poster_key, content_type="image/jpeg")
-                video.thumbnail_url = storage_service.get_public_url(poster_key)
-                video.thumbnail_key = poster_key
+            poster_path = os.path.join(tmpdir, "poster.jpg")
+            generate_thumbnail(input_path, poster_path, time_seconds=5)
+            poster_key = f"processed/{video_id}/poster.jpg"
+            storage_service.upload_file(poster_path, poster_key, content_type="image/jpeg")
+            video.thumbnail_url = storage_service.get_public_url(poster_key)
+            video.thumbnail_key = poster_key
 
             # Build public URLs
             hls_manifest_url = storage_service.get_public_url(f"{hls_prefix}/master.m3u8")
