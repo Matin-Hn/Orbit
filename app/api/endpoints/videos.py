@@ -21,22 +21,6 @@ from app.tasks.video_tasks import transcode_video_task
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
-@router.get("/{video_id}", response_model=VideoResponse)
-async def get_video(
-    video_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_from_cookie)
-):
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    # Check visibility permissions
-    if video.visibility == "private" and (not current_user or video.channel.user_id != current_user.id):
-        raise HTTPException(status_code=403, detail="Video is private")
-    
-    return video
-
 # Helper: generate a unique S3 key for the video
 def generate_video_key(original_filename: str) -> str:
     """Generate a unique S3 key for the original uploaded video."""
@@ -77,10 +61,10 @@ async def request_video_upload(
 
     # 4. Generate pre‑signed POST for the final key
     try:
-        presigned_url = await storage_service.generate_upload_presigned_post(
+        presigned_url = await storage_service.generate_presigned_put_url(
             object_key=object_key,
-            expiration= 3600,  
-            max_content_length=524288000 # 500 MB
+            expiration= 3600,
+            content_type= "video/mp4"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not create upload URL: {str(e)}")
@@ -94,7 +78,7 @@ async def request_video_upload(
 @router.get("/thumbnail-upload-url", response_model=UploadUrlResponse)
 async def get_thumbnail_upload_url(
     filename: str = "thumbnail.jpg",
-    db: Session = Depends(get_current_user_from_cookie),
+    db: Session = Depends(get_db),
     content_type: str = "image/jpeg",
     current_user: User = Depends(get_current_user_from_cookie),
     current_channel: Channel = Depends(get_current_channel)
@@ -161,6 +145,7 @@ async def complete_upload(
         mime_type=payload.mime_type,
         original_key=payload.object_key,
         file_url=payload.object_key,      # keep for backward compatibility
+        thumbnail_url=payload.thumbnail_key,
         duration_seconds=None,            # will be set by worker
         status="processing",
         visibility=payload.visibility or "public",
@@ -177,9 +162,9 @@ async def complete_upload(
             db_video.thumbnail_key = payload.thumbnail_key
             db_video.thumbnail_url = storage_service.get_public_url(payload.thumbnail_key)
 
-        db.add(db_video)
-        db.commit()
-        db.refresh(db_video)
+    db.add(db_video)
+    db.commit()
+    db.refresh(db_video)
 
     # Trigger Celery task
     transcode_video_task.delay(
@@ -194,3 +179,18 @@ async def complete_upload(
         message="Video accepted for transcoding"
     )
 
+@router.get("/{video_id}", response_model=VideoResponse)
+async def get_video(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_cookie)
+):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Check visibility permissions
+    if video.visibility == "private" and (not current_user or video.channel.user_id != current_user.id):
+        raise HTTPException(status_code=403, detail="Video is private")
+    
+    return video
