@@ -86,7 +86,7 @@ services:
       - S3_USE_PATH_STYLE=true
       - S3_USE_SSL=false
       # Sprite image
-      - SPRITE_INTERVAL_SECONDS=5
+      - SPRITE_INTERVAL=5
       - SPRITE_TILE_WIDTH=160
       - SPRITE_TILE_HEIGHT=90
       - SPRITE_COLUMNS=10
@@ -102,7 +102,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: celery_worker
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+    command: bash -c 'celery -A core.celery_app worker --loglevel=info'
     depends_on:
       - db
       - minio
@@ -122,6 +122,12 @@ services:
       - S3_REGION=us-east-1
       - S3_USE_PATH_STYLE=true
       - S3_USE_SSL=false
+      # Sprite image
+      - SPRITE_INTERVAL=5
+      - SPRITE_TILE_WIDTH=160
+      - SPRITE_TILE_HEIGHT=90
+      - SPRITE_COLUMNS=10
+      - SPRITE_MAX_TILES=100
     volumes:
       - ./app:/usr/src/app
     restart: unless-stopped
