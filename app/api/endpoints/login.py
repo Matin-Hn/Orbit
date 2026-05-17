@@ -57,7 +57,7 @@ async def register_user(
     
     raise HTTPException(
         status_code=status.HTTP_201_CREATED,
-        content="User successfully created"
+        detail="User successfully created"
     )
 
 
