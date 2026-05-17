@@ -127,14 +127,18 @@ def require_admin(current_user: User = Depends(get_current_user_from_cookie)):
     return current_user
 
 
-async def get_current_channel(
+def get_current_channel(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie)
 ) -> Channel:
-    db_channel = db.query(Channel).filter(Channel.user_id == current_user.id).first()
-    if not db_channel:
+    """Return the channel owned by the current user."""
+    channel = db.query(Channel).filter(
+        Channel.user_id == current_user.id,
+        Channel.is_suspended == False
+    ).first()
+    if not channel:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="You do not have an active channel"
+            status_code=404,
+            detail="Channel not found. Please create a channel first."
         )
-    return db_channel
+    return channel
