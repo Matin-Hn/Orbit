@@ -81,4 +81,20 @@ class StorageService:
 
     # ... other methods (generate_upload_presigned_post, etc.) remain
 
+    def generate_presigned_get_url(self, object_key: str, expiration: int = 60) -> str:
+        """
+        Generate a presigned GET URL for an S3 object.
+        Used for secure, short-lived access to the HLS manifest.
+        """
+        url = self.public_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': self.bucket_name, 'Key': object_key},
+            ExpiresIn=expiration
+        )
+        # Ensure the URL uses the public endpoint (replace internal if needed)
+        internal_url = settings.S3_ENDPOINT
+        if not internal_url.startswith('http'):
+            internal_url = f"http://{internal_url}"
+        return url.replace(internal_url, self.public_endpoint)
+
 storage_service = StorageService()
