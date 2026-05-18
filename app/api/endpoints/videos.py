@@ -19,7 +19,7 @@ from app.core.config import settings
 from app.tasks.video_tasks import transcode_video_task
 
 
-router = APIRouter(prefix="/videos", tags=["videos"])
+router = APIRouter(prefix="/videos", tags=["video operations"])
 
 # Helper: generate a unique S3 key for the video
 def generate_video_key(original_filename: str) -> str:
@@ -178,19 +178,3 @@ async def complete_upload(
         status="processing",
         message="Video accepted for transcoding"
     )
-
-@router.get("/{video_id}", response_model=VideoResponse)
-async def get_video(
-    video_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_from_cookie)
-):
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    # Check visibility permissions
-    if video.visibility == "private" and (not current_user or video.channel.user_id != current_user.id):
-        raise HTTPException(status_code=403, detail="Video is private")
-    
-    return video
