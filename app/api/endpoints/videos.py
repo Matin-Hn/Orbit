@@ -1,12 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
-from typing import Optional
+import asyncio
 import uuid
+import jwt
+import logging
+from datetime import timedelta
+from sqlalchemy.orm import Session
+
+
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 
 from app.services.auth_service import (
     get_current_user_from_cookie,
     get_current_channel,
-    get_current_user_from_cookie_ws
+    create_access_token
 )
 from app.api.deps import get_db
 from app.models.video import Video
@@ -25,6 +30,8 @@ from app.ws.manager import manager
 
 
 router = APIRouter(prefix="/videos", tags=["video operations"])
+logger = logging.getLogger(__name__)
+
 
 # Helper: generate a unique S3 key for the video
 def generate_video_key(original_filename: str) -> str:
@@ -236,38 +243,115 @@ async def websocket_video_status(
     db: Session = Depends(get_db)
 ):
     """
-    WebSocket endpoint for real-time video status updates.
-    Authenticates via the same cookie used for HTTP requests.
+    Real‑time video processing status via WebSocket.
+    Authentication is handled in the first message, NOT during the handshake.
     """
-    # Authenticate first
+    # 1. Accept immediately (no token in URL / cookies)
+    await websocket.accept()
+
+    # 2. Wait for auth message (5s timeout)
     try:
-        user = await get_current_user_from_cookie_ws(websocket)
-    except WebSocketDisconnect:
-        return  # Connection already closed in the dependency
-    
-    # Verify video exists and user has access
+        auth_message = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+    except asyncio.TimeoutError:
+        await websocket.send_json({"type": "auth_error", "message": "Authentication timeout"})
+        await websocket.close(code=4001)
+        return
+
+    if auth_message.get("type") != "auth" or not auth_message.get("token"):
+        await websocket.send_json({"type": "auth_error", "message": "Invalid auth message"})
+        await websocket.close(code=4001)
+        return
+
+    # 3. Verify JWT
+    token = auth_message["token"]
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        await websocket.send_json({"type": "auth_error", "message": "Token expired"})
+        await websocket.close(code=4001)
+        return
+    except jwt.InvalidTokenError:
+        await websocket.send_json({"type": "auth_error", "message": "Invalid token"})
+        await websocket.close(code=4001)
+        return
+
+    user_id = payload.get("sub") or payload.get("user_id")
+    if not user_id:
+        await websocket.send_json({"type": "auth_error", "message": "Token malformed"})
+        await websocket.close(code=4001)
+        return
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active:
+        await websocket.send_json({"type": "auth_error", "message": "User not found"})
+        await websocket.close(code=4001)
+        return
+
+    # 4. Authorisation: video must belong to the user
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
-        await websocket.close(code=4004, reason="Video not found")
+        await websocket.send_json({"type": "video.error", "videoId": video_id, "error": "Video not found"})
+        await websocket.close(code=4004)
         return
-    
-    # Check access: must be owner or public video
-    if video.channel.user_id != user.id and video.visibility != "public":
-        await websocket.close(code=4003, reason="Access denied")
+
+    channel = db.query(Channel).filter(
+        Channel.id == video.channel_id,
+        Channel.user_id == user.id
+    ).first()
+    if not channel:
+        await websocket.send_json({"type": "auth_error", "message": "Access denied"})
+        await websocket.close(code=4003)
         return
-    
-    # If video is already ready, send immediately and close
+
+    # 5. Success
+    await websocket.send_json({"type": "auth_ok"})
+
+    # 6. Immediate response if already processed
     if video.status == "ready":
-        await websocket.accept()
         await websocket.send_json({"type": "video.ready", "videoId": video_id})
         await websocket.close()
         return
-    
-    # Connect and subscribe to status changes
+    if video.status == "failed":
+        await websocket.send_json({
+            "type": "video.error",
+            "videoId": video_id,
+            "error": video.processing_error or "Transcoding failed"
+        })
+        await websocket.close()
+        return
+
+    # 7. Subscribe to Redis for updates
     await manager.connect(video_id, websocket)
     try:
         await manager.subscribe(video_id, websocket)
     except WebSocketDisconnect:
-        pass
+        logger.info(f"WebSocket disconnected for video {video_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for video {video_id}: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": "Internal error"})
+        except Exception:
+            pass
     finally:
         manager.disconnect(video_id, websocket)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+# Generate short-lived token for websocket
+@router.get("/ws-token")
+async def get_websocket_token(
+    current_user: User = Depends(get_current_user_from_cookie)
+):
+    """
+    Returns a short-lived token for WebSocket authentication.
+    The HttpOnly cookie is sent automatically with this request.
+    """
+    # Generate a short-lived WebSocket-specific token (5 minutes)
+    ws_token = create_access_token(
+        subject=current_user.id,
+        expires_delta=timedelta(minutes=5)
+    )
+    return {"token": ws_token, "expires_in": 300}

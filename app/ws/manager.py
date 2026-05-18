@@ -29,7 +29,6 @@ class ConnectionManager:
             raise
 
     async def connect(self, video_id: int, websocket: WebSocket):
-        await websocket.accept()
         if video_id not in self.active_connections:
             self.active_connections[video_id] = []
         self.active_connections[video_id].append(websocket)
