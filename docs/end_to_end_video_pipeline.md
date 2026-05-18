@@ -25,7 +25,7 @@
 
 - Worker picks up the job:
   - Downloads the original video from S3 (or uses S3 event trigger).
-  - Transcodes to HLS (`.m3u8` + `.ts` segments) or DASH for adaptive bitrate.
+  - Transcodes to HLS (`.m3u8` + `.ts` segments) or DASH for adaptive bitrate in several qualities.
   - Generates thumbnail sprites (for timeline preview) and a poster image.
   - Uploads all derivatives to a **different S3 bucket** (or same bucket with `processed/` prefix).
 - Worker updates the database:
