@@ -178,3 +178,50 @@ async def complete_upload(
         status="processing",
         message="Video accepted for transcoding"
     )
+
+from app.services.storage import storage_service  # already imported
+
+@router.get("/{video_id}/signed-url")
+async def get_video_signed_manifest_url(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_cookie),
+):
+    """
+    Returns a short-lived signed URL for the HLS manifest (.m3u8).
+    Only accessible if the video is ready and the user has viewing rights.
+    """
+    video = db.query(Video).filter(
+        Video.id == video_id,
+        Video.deleted_at.is_(None)
+    ).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # 1. Video must be in 'ready' state
+    if video.status != "ready":
+        raise HTTPException(status_code=400, detail="Video is not ready for playback")
+
+    # 2. Access control
+    #    - Owner (channel owner) can always access
+    #    - Public videos are accessible to any authenticated user
+    #    - Unlisted / scheduled videos are treated as private for simplicity
+    is_owner = video.channel.user_id == current_user.id
+    if not is_owner and video.visibility != "public":
+        raise HTTPException(status_code=403, detail="You do not have permission to view this video")
+
+    # 3. Determine the S3 key of the HLS manifest.
+    #    Based on the transcoding task, the manifest is stored at:
+    #       processed/{video_id}/hls/master.m3u8
+    manifest_key = f"processed/{video_id}/hls/master.m3u8"
+
+    # 4. Generate a presigned URL valid for 60 seconds (short-lived)
+    try:
+        signed_url = storage_service.generate_presigned_get_url(
+            object_key=manifest_key,
+            expiration=60
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate signed URL: {str(e)}")
+
+    return {"signed_url": signed_url}
