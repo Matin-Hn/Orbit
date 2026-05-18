@@ -6,6 +6,7 @@ import shutil
 import math
 from PIL import Image  
 import logging
+import redis
 
 from celery import shared_task
 from sqlalchemy.orm import Session
@@ -118,16 +119,26 @@ def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
             db.commit()
 
             logger.info(f"Video {video_id} processed successfully with sprites")
-
+            try:
+                r = redis.Redis.from_url(settings.REDIS_WS_PUBSUB)
+                r.publish(
+                    f"video:{video_id}:status",
+                    json.dumps({"type": "video.ready", "videoId": video_id})
+                )
+                r.close()
+                logger.info(f"Published video.ready event for video {video_id}")
+            except Exception as e:
+                logger.error(f"Failed to publish WebSocket notification: {e}")
+                
     except Exception as e:
-        logger.exception(f"Transcoding failed for video {video_id}")
-        if db:
-            video = db.query(Video).filter(Video.id == video_id).first()
-            if video:
-                video.status = "failed"
-                video.processing_error = str(e)
-                db.commit()
-        raise self.retry(exc=e, countdown=60)
+            logger.exception(f"Transcoding failed for video {video_id}")
+            if db:
+                video = db.query(Video).filter(Video.id == video_id).first()
+                if video:
+                    video.status = "failed"
+                    video.processing_error = str(e)
+                    db.commit()
+            raise self.retry(exc=e, countdown=60)
     finally:
         db.close()
 

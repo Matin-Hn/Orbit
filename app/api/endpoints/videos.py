@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from typing import Optional
 import uuid
 
-from app.services.auth_service import get_current_user_from_cookie, get_current_channel
+from app.services.auth_service import (
+    get_current_user_from_cookie,
+    get_current_channel,
+    get_current_user_from_cookie_ws
+)
 from app.api.deps import get_db
 from app.models.video import Video
 from app.models.channel import Channel
@@ -17,6 +21,7 @@ from app.schemas.video import (
 from app.services.storage import storage_service
 from app.core.config import settings
 from app.tasks.video_tasks import transcode_video_task
+from app.ws.manager import manager
 
 
 router = APIRouter(prefix="/videos", tags=["video operations"])
@@ -179,8 +184,6 @@ async def complete_upload(
         message="Video accepted for transcoding"
     )
 
-from app.services.storage import storage_service  # already imported
-
 @router.get("/{video_id}/signed-url")
 async def get_video_signed_manifest_url(
     video_id: int,
@@ -225,3 +228,46 @@ async def get_video_signed_manifest_url(
         raise HTTPException(status_code=500, detail=f"Could not generate signed URL: {str(e)}")
 
     return {"signed_url": signed_url}
+
+@router.websocket("/ws/video/{video_id}")
+async def websocket_video_status(
+    websocket: WebSocket,
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    WebSocket endpoint for real-time video status updates.
+    Authenticates via the same cookie used for HTTP requests.
+    """
+    # Authenticate first
+    try:
+        user = await get_current_user_from_cookie_ws(websocket)
+    except WebSocketDisconnect:
+        return  # Connection already closed in the dependency
+    
+    # Verify video exists and user has access
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        await websocket.close(code=4004, reason="Video not found")
+        return
+    
+    # Check access: must be owner or public video
+    if video.channel.user_id != user.id and video.visibility != "public":
+        await websocket.close(code=4003, reason="Access denied")
+        return
+    
+    # If video is already ready, send immediately and close
+    if video.status == "ready":
+        await websocket.accept()
+        await websocket.send_json({"type": "video.ready", "videoId": video_id})
+        await websocket.close()
+        return
+    
+    # Connect and subscribe to status changes
+    await manager.connect(video_id, websocket)
+    try:
+        await manager.subscribe(video_id, websocket)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.disconnect(video_id, websocket)

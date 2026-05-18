@@ -10,15 +10,17 @@ from app.api.endpoints.videos import router as videos_router
 from app.api.endpoints.channels import router as channels_router
 from app.api.endpoints.categories import router as categories_router
 from app.core.database import Base, engine
+from app.ws.manager import manager
 
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
     Base.metadata.create_all(engine)
     print("✅ Database tables created successfully")
-    print("Service is running..")
+    await manager.initialize()
     yield
     print("Shuting down..")
+    await manager.close()
 
 
 app = FastAPI(

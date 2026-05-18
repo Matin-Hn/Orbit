@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     SPRITE_COLUMNS: int
     SPRITE_MAX_TILES: int
 
+    # Redis for websocket pupsub
+    REDIS_WS_PUBSUB: str = "redis://redis:6379/1"
+
 
 
 @lru_cache
