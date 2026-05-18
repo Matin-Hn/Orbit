@@ -34,11 +34,11 @@
   - Optionally triggers a CDN invalidation (if using a CDN with cache).
 
 
-## 5. Frontend Polling for Status
+## 5. Real-Time Status via WebSocket
 
-- Frontend polls `GET /api/videos/{id}/status` every 2–5 seconds with exponential backoff (e.g., 2s → 4s → 8s → cap at 15s).
-- Once `status = ready`, frontend requests a **signed URL** for the HLS manifest.
-- *(Future enhancement: swap to WebSocket if real-time collaboration features are added.)*
+- After upload completes (202 Accepted), frontend sends a WebSocket subscription for video:{id}.
+- Worker finishes transcoding → backend pushes { type: "video.ready", videoId } to subscribed clients.
+- Frontend receives event → fetches signed manifest URL → loads player.
 
 ---
 
@@ -62,8 +62,8 @@
 
 - Frontend passes the signed manifest URL to the video player.
 - **CDN (CloudFront / Cloudflare)** sits in front of S3.
-  - Manifest request: CDN forwards the signed URL to S3, validates signature → returns manifest.
-  - Segment requests: CDN caches and serves the public `.ts` files directly from edge, reducing S3 egress.
+- Manifest request: CDN forwards the signed URL to S3, validates signature → returns manifest.
+- Segment requests: CDN caches and serves the public `.ts` files directly from edge, reducing S3 egress.
 - Player requests manifest once, then fetches segments as needed — all segments are cacheable and publicly readable.
 
 ---
