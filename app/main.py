@@ -35,7 +35,11 @@ patch_fastapi(app)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # TODO: Set it in prod
+    allow_origins=[
+        "http://localhost",   # your frontend dev server
+        "http://127.0.0.1",
+        # add your production domain later
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
