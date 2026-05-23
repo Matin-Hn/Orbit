@@ -102,7 +102,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: celery_worker
-    command: bash -c 'celery -A core.celery_app worker --loglevel=info'
+    command: bash -c 'celery -A core.celery_app worker --concurrency=6  --loglevel=info'
     depends_on:
       - db
       - minio
