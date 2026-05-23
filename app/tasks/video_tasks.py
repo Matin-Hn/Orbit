@@ -89,18 +89,14 @@ def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
             storage_service.upload_file(vtt_local_path, vtt_remote_key, content_type="text/vtt")
 
             # Generate or use user-uploaded thumbnail
-            # if video.thumbnail_key:
-            #     # User provided custom thumbnail
-            #     video.thumbnail_url = storage_service.get_public_url(video.thumbnail_key)
-            #     logger.info(f"Using user-uploaded thumbnail: {video.thumbnail_key}")
-            # else:
+            if not video.thumbnail_url:
                 # Generate poster from first frame
-            poster_path = os.path.join(tmpdir, "poster.jpg")
-            generate_thumbnail(input_path, poster_path, time_seconds=5)
-            poster_key = f"processed/{video_id}/poster.jpg"
-            storage_service.upload_file(poster_path, poster_key, content_type="image/jpeg")
-            video.thumbnail_url = storage_service.get_public_url(poster_key)
-            video.thumbnail_key = poster_key
+                poster_path = os.path.join(tmpdir, "poster.jpg")
+                generate_thumbnail(input_path, poster_path, time_seconds=5)
+                poster_key = f"processed/{video_id}/poster.jpg"
+                storage_service.upload_file(poster_path, poster_key, content_type="image/jpeg")
+                video.thumbnail_url = storage_service.get_public_url(poster_key)
+                video.thumbnail_key = poster_key
 
             # Build public URLs
             hls_manifest_url = storage_service.get_public_url(f"{hls_prefix}/master.m3u8")
