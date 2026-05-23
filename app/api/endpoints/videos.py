@@ -20,8 +20,7 @@ from app.models.user import User                     # adjust
 from app.schemas.video import (
     UploadUrlResponse,
     VideoCompleteRequest,
-    VideoCompleteResponse,
-    VideoResponse
+    VideoCompleteResponse
 )
 from app.services.storage import storage_service
 from app.core.config import settings
