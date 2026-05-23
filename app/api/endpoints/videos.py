@@ -228,7 +228,7 @@ async def get_video_signed_manifest_url(
     try:
         signed_url = storage_service.generate_presigned_get_url(
             object_key=manifest_key,
-            expiration=60
+            expiration=7200
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not generate signed URL: {str(e)}")
