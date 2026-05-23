@@ -31,10 +31,10 @@ else:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from app.models.user import *
-from app.models.video import *
-from app.models.channel import *
-from app.models.category import *
+from app.models.user import User
+from app.models.video import Video
+from app.models.channel import Channel
+from app.models.category import Category
 
 target_metadata = Base.metadata
 
