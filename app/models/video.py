@@ -1,13 +1,26 @@
+import base64
+import secrets
+
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey, TIMESTAMP, CheckConstraint, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from datetime import datetime
+
 from app.core.database import Base
 
 class Video(Base):
     __tablename__ = "videos"
+
+    def generate_public_id(length: int = 8) -> str:
+        """Generate URL-safe random ID"""
+        # Calculate bytes needed: length * 3/4 (base64 efficiency)
+        num_bytes = (length * 3 + 3) // 4
+        random_bytes = secrets.token_bytes(num_bytes)
+        return base64.urlsafe_b64encode(random_bytes).decode()[:length]
     
     id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # Public-facing ID (unique, indexed, YouTube-style string)
+    public_id = Column(String(8), primary_key=True, default=generate_public_id)
     channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
