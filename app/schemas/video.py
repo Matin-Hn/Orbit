@@ -65,7 +65,11 @@ class VideoUpdate(BaseModel):
 # Video response schema
 class VideoResponse(BaseModel):
     id: int
+    public_id: str
     status: str
+    title: str
+    description: str
+    channel_name: str
     duration_seconds: Optional[int]
     thumbnail_url: Optional[str]
     hls_manifest_url: Optional[str]
