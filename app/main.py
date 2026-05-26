@@ -10,6 +10,7 @@ from app.api.endpoints.videos import router as videos_router
 from app.api.endpoints.channels import router as channels_router
 from app.api.endpoints.categories import router as categories_router
 from app.api.endpoints.public import router as video_public_router
+from app.api.endpoints.comments import router as comments_router
 from app.core.database import Base, engine
 from app.ws.manager import manager
 
@@ -52,3 +53,4 @@ app.include_router(videos_router)
 app.include_router(channels_router)
 app.include_router(categories_router)
 app.include_router(video_public_router)
+app.include_router(comments_router)

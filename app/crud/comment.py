@@ -1,96 +1,117 @@
-from typing import Optional, List, Tuple
+# app/crud/comment.py
+from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
 from app.models.comment import Comment
+from app.schemas.comment import CommentCreate, CommentUpdate
 
-class CommentCRUD:
-    def __init__(self, db: Session):
-        self.db = db
-    
-    def create(self, user_id: int, video_id: int, body: str, parent_id: Optional[int] = None) -> Comment:
-        comment = Comment(
-            user_id=user_id,
-            video_id=video_id,
-            body=body,
-            parent_id=parent_id
-        )
-        self.db.add(comment)
-        self.db.commit()
-        self.db.refresh(comment)
-        return comment
-    
-    def get_by_id(self, comment_id: int, include_deleted: bool = False) -> Optional[Comment]:
-        query = self.db.query(Comment).filter(Comment.id == comment_id)
-        if not include_deleted:
-            query = query.filter(Comment.deleted_at.is_(None))
-        return query.first()
-    
+class CRUDComment:
+    def __init__(self, model=Comment):
+        self.model = model
+
+    def get(self, db: Session, id: int) -> Optional[Comment]:
+        return db.query(self.model).filter(
+            and_(
+                self.model.id == id,
+                self.model.deleted_at.is_(None)
+            )
+        ).first()
+
     def get_by_video(
         self, 
-        video_id: int, 
-        page: int = 1, 
-        per_page: int = 20,
-        include_replies: bool = False
+        db: Session, 
+        *, 
+        video_id: int,
+        skip: int = 0,
+        limit: int = 20
     ) -> Tuple[List[Comment], int]:
-        # Base query for root comments (no parent_id)
-        query = self.db.query(Comment).filter(
+        query = db.query(self.model).filter(
             and_(
-                Comment.video_id == video_id,
-                Comment.deleted_at.is_(None),
-                Comment.parent_id.is_(None) if not include_replies else True
+                self.model.video_id == video_id,
+                self.model.deleted_at.is_(None),
+                self.model.parent_id.is_(None)
             )
         )
         
-        # Get total count
         total = query.count()
-        
-        # Apply pagination and ordering
         comments = query.order_by(
-            Comment.is_pinned.desc(),
-            Comment.created_at.desc()
-        ).offset((page - 1) * per_page).limit(per_page).all()
+            self.model.is_pinned.desc(),
+            self.model.created_at.desc()
+        ).offset(skip).limit(limit).all()
         
         return comments, total
     
-    def get_replies(self, parent_id: int, page: int = 1, per_page: int = 10) -> Tuple[List[Comment], int]:
-        query = self.db.query(Comment).filter(
+    def get_replies(
+        self, 
+        db: Session, 
+        *, 
+        parent_id: int,
+        skip: int = 0,
+        limit: int = 10
+    ) -> Tuple[List[Comment], int]:
+        query = db.query(self.model).filter(
             and_(
-                Comment.parent_id == parent_id,
-                Comment.deleted_at.is_(None)
+                self.model.parent_id == parent_id,
+                self.model.deleted_at.is_(None)
             )
         )
         
         total = query.count()
-        replies = query.order_by(Comment.created_at.asc())\
-            .offset((page - 1) * per_page)\
-            .limit(per_page)\
-            .all()
+        replies = query.order_by(self.model.created_at.asc())\
+            .offset(skip).limit(limit).all()
         
         return replies, total
     
-    def update(self, comment: Comment, update_data: dict) -> Comment:
-        for key, value in update_data.items():
-            if hasattr(comment, key) and value is not None:
-                setattr(comment, key, value)
-        
-        if 'body' in update_data and update_data['body'] is not None:
-            comment.is_edited = True
-        
-        self.db.commit()
-        self.db.refresh(comment)
-        return comment
+    def create(self, db: Session, *, obj_in: CommentCreate, user_id: int) -> Comment:
+        db_obj = self.model(
+            user_id=user_id,
+            video_id=obj_in.video_id,
+            body=obj_in.body,
+            parent_id=obj_in.parent_id,
+            is_approved=False  # New comments need approval by default
+        )
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
     
-    def soft_delete(self, comment: Comment) -> Comment:
+    def update(
+        self,
+        db: Session,
+        *,
+        db_obj: Comment,
+        obj_in: CommentUpdate
+    ) -> Comment:
+        update_data = obj_in.dict(exclude_unset=True)
+        
+        if 'body' in update_data:
+            db_obj.body = update_data['body']
+            db_obj.is_edited = True
+        
+        if 'is_pinned' in update_data:
+            db_obj.is_pinned = update_data['is_pinned']
+        
+        if 'is_approved' in update_data:
+            db_obj.is_approved = update_data['is_approved']
+        
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    
+    def soft_delete(self, db: Session, *, comment: Comment) -> Comment:
         comment.deleted_at = func.now()
-        self.db.commit()
-        self.db.refresh(comment)
+        db.add(comment)
+        db.commit()
+        db.refresh(comment)
         return comment
     
-    def get_comment_count_for_video(self, video_id: int) -> int:
-        return self.db.query(Comment).filter(
-            and_(
-                Comment.video_id == video_id,
-                Comment.deleted_at.is_(None)
-            )
-        ).count()
+    def approve_comment(self, db: Session, *, comment: Comment) -> Comment:
+        comment.is_approved = True
+        db.add(comment)
+        db.commit()
+        db.refresh(comment)
+        return comment
+
+comment = CRUDComment(Comment)

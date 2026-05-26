@@ -1,19 +1,21 @@
+# app/services/comment_service.py
+from typing import Optional, List
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from app.crud.comment import CommentCRUD
-from app.schemas.comment import (
-    CommentCreate, 
-    CommentUpdate, 
-    CommentResponse, 
-    CommentListResponse
-)
-from app.models.comment import Comment
+from app.crud.comment import comment as comment_crud
+from app.crud.video import video as video_crud
+from app.schemas.comment import CommentCreate, CommentUpdate, CommentResponse, CommentListResponse
+from app.models.user import User
+from app.models.channel import Channel
+from app.services.authorization_service import AuthorizationService
 
 class CommentService:
-    def __init__(self, comment_repo: CommentCRUD):
-        self.comment_repo = comment_repo
+    def __init__(self, db: Session):
+        self.db = db
+        self.auth_service = AuthorizationService(db)
     
-    def _to_response(self, comment: Comment, reply_count: int = 0) -> CommentResponse:
+    def _to_response(self, comment) -> CommentResponse:
         return CommentResponse(
             id=comment.id,
             user_id=comment.user_id,
@@ -25,61 +27,85 @@ class CommentService:
             is_approved=comment.is_approved,
             created_at=comment.created_at,
             updated_at=comment.updated_at,
-            reply_count=reply_count
+            reply_count=len(comment.replies) if comment.replies else 0
         )
     
-    def create_comment(self, comment_data: CommentCreate) -> CommentResponse:
-        # Validate parent comment if provided
+    def create_comment(
+        self, 
+        comment_data: CommentCreate, 
+        current_user: User
+    ) -> CommentResponse:
+        """Create a new comment - requires authentication"""
+        # Validate parent comment if replying
+        video_existing = video_crud.get(self.db, id=comment_data.video_id)
+        if not video_existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Video with id {comment_data.video_id} is not exist."
+            )            
         if comment_data.parent_id:
-            parent_comment = self.comment_repo.get_by_id(comment_data.parent_id)
+            parent_comment = comment_crud.get(self.db, id=comment_data.parent_id)
             if not parent_comment:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Parent comment not found"
                 )
-            # Ensure reply is to a root comment, not nested
             if parent_comment.parent_id is not None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot reply to a reply. Only one level of nesting allowed."
                 )
         
-        comment = self.comment_repo.create(
-            user_id=comment_data.user_id,
-            video_id=comment_data.video_id,
-            body=comment_data.body,
-            parent_id=comment_data.parent_id
+        comment = comment_crud.create(
+            self.db, 
+            obj_in=comment_data, 
+            user_id=current_user.id
         )
         
         return self._to_response(comment)
     
     def get_comment(self, comment_id: int) -> CommentResponse:
-        comment = self.comment_repo.get_by_id(comment_id)
+        """Get a single comment - public access"""
+        comment = comment_crud.get(self.db, id=comment_id)
         if not comment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comment not found"
             )
         
-        reply_count = self.comment_repo.get_comment_count_for_video(comment.video_id)
-        return self._to_response(comment, reply_count)
+        # Only show approved comments to non-privileged users
+        # This check would be in a separate method if you want to filter
+        return self._to_response(comment)
     
     def get_video_comments(
         self, 
         video_id: int, 
         page: int = 1, 
-        per_page: int = 20
+        per_page: int = 20,
+        current_user: Optional[User] = None
     ) -> CommentListResponse:
-        comments, total = self.comment_repo.get_by_video(
+        """Get video comments - public access with optional approval filtering"""
+        skip = (page - 1) * per_page
+        comments, total = comment_crud.get_by_video(
+            self.db,
             video_id=video_id,
-            page=page,
-            per_page=per_page
+            skip=skip,
+            limit=per_page
         )
         
-        comment_responses = []
-        for comment in comments:
-            reply_count = len(comment.replies) if comment.replies else 0
-            comment_responses.append(self._to_response(comment, reply_count))
+        # Filter unapproved comments for non-privileged users
+        if current_user:
+            is_privileged = (
+                self.auth_service.is_admin_or_superuser(current_user) or
+                self.auth_service.is_channel_owner(current_user, video_id)
+            )
+        else:
+            is_privileged = False
+        
+        if not is_privileged:
+            comments = [c for c in comments if c.is_approved]
+        
+        comment_responses = [self._to_response(c) for c in comments]
         
         return CommentListResponse(
             total=total,
@@ -92,23 +118,26 @@ class CommentService:
         self, 
         comment_id: int, 
         page: int = 1, 
-        per_page: int = 10
+        per_page: int = 10,
+        current_user: Optional[User] = None
     ) -> CommentListResponse:
-        # Verify parent comment exists
-        parent_comment = self.comment_repo.get_by_id(comment_id)
+        """Get comment replies - public access"""
+        parent_comment = comment_crud.get(self.db, id=comment_id)
         if not parent_comment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Parent comment not found"
             )
         
-        replies, total = self.comment_repo.get_replies(
+        skip = (page - 1) * per_page
+        replies, total = comment_crud.get_replies(
+            self.db,
             parent_id=comment_id,
-            page=page,
-            per_page=per_page
+            skip=skip,
+            limit=per_page
         )
         
-        reply_responses = [self._to_response(reply) for reply in replies]
+        reply_responses = [self._to_response(r) for r in replies]
         
         return CommentListResponse(
             total=total,
@@ -117,44 +146,93 @@ class CommentService:
             per_page=per_page
         )
     
-    def update_comment(self, comment_id: int, user_id: int, update_data: CommentUpdate) -> CommentResponse:
-        comment = self.comment_repo.get_by_id(comment_id)
+    def update_comment(
+        self, 
+        comment_id: int, 
+        update_data: CommentUpdate,
+        current_user: User
+    ) -> CommentResponse:
+        """Update comment - requires proper authorization"""
+        comment = comment_crud.get(self.db, id=comment_id)
         if not comment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comment not found"
             )
         
-        # Authorization check - only comment owner can update body
-        if update_data.body and comment.user_id != user_id:
+        # Check modification permissions
+        if not self.auth_service.can_modify_comment(current_user, comment):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only edit your own comments"
+                detail="You don't have permission to modify this comment"
             )
         
-        # Only moderators/admins can update approval and pin status
-        if (update_data.is_approved is not None or update_data.is_pinned is not None):
-            # Add your authorization logic here for moderators
-            pass
+        # Only channel owner or admin/superuser can pin comments
+        if update_data.is_pinned is not None:
+            if not self.auth_service.can_pin_comment(current_user, comment):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to pin/unpin this comment"
+                )
         
-        update_dict = update_data.dict(exclude_unset=True)
-        comment = self.comment_repo.update(comment, update_dict)
+        # Only channel owner or admin can approve comments
+        if update_data.is_approved is not None:
+            if not self.auth_service.can_approve_comment(current_user, comment):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to approve this comment"
+                )
+        
+        comment = comment_crud.update(
+            self.db,
+            db_obj=comment,
+            obj_in=update_data
+        )
         
         return self._to_response(comment)
     
-    def delete_comment(self, comment_id: int, user_id: int):
-        comment = self.comment_repo.get_by_id(comment_id)
+    def delete_comment(
+        self, 
+        comment_id: int,
+        current_user: User
+    ) -> None:
+        """Soft delete comment - requires proper authorization"""
+        comment = comment_crud.get(self.db, id=comment_id)
         if not comment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comment not found"
             )
         
-        # Authorization check
-        if comment.user_id != user_id:
+        # Check deletion permissions
+        if not self.auth_service.can_modify_comment(current_user, comment):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only delete your own comments"
+                detail="You don't have permission to delete this comment"
             )
         
-        self.comment_repo.soft_delete(comment)
+        comment_crud.soft_delete(self.db, comment=comment)
+    
+    def approve_comment(
+        self, 
+        comment_id: int,
+        current_user: User,
+        current_channel: Channel
+    ) -> CommentResponse:
+        """Approve a comment - requires admin or channel owner privileges"""
+        comment = comment_crud.get(self.db, id=comment_id)
+        if not comment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comment not found"
+            )
+        
+        # Check approval permissions
+        if not self.auth_service.can_approve_comment(current_user, current_channel):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to approve comments"
+            )
+        
+        comment = comment_crud.approve_comment(self.db, comment=comment)
+        return self._to_response(comment)
