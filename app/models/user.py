@@ -38,3 +38,4 @@ class User(Base):
     updated_date = Column(DateTime, server_default=func.now(),server_onupdate=func.now())
 
     channel = relationship("Channel", back_populates="user")
+    comments = relationship("Comment", back_populates="user")

@@ -18,9 +18,9 @@ class Video(Base):
         random_bytes = secrets.token_bytes(num_bytes)
         return base64.urlsafe_b64encode(random_bytes).decode()[:length]
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     # Public-facing ID (unique, indexed, YouTube-style string)
-    public_id = Column(String(8), primary_key=True, default=generate_public_id)
+    public_id = Column(String(8), unique=True, nullable=False, default=generate_public_id)
     channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
@@ -64,6 +64,8 @@ class Video(Base):
     # Relationships
     channel = relationship("Channel", back_populates="videos")
     category = relationship("Category", back_populates="videos")
+    comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
+
     
     # Table constraints
     __table_args__ = (
