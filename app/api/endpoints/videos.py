@@ -16,7 +16,7 @@ from app.services.auth_service import (
 from app.api.deps import get_db
 from app.models.video import Video
 from app.models.channel import Channel
-from app.models.user import User                     # adjust
+from app.models.user import User
 from app.schemas.video import (
     UploadUrlResponse,
     VideoCompleteRequest,
