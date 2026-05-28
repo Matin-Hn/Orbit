@@ -36,7 +36,6 @@ async def get_video(
     # Return all fields required by VideoResponse
     return VideoResponse(
         id=video.id,
-        public_id=video.public_id,
         status=video.status,
         title=video.title,
         description=video.description,

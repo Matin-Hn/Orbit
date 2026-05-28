@@ -10,17 +10,8 @@ from app.core.database import Base
 
 class Video(Base):
     __tablename__ = "videos"
-
-    def generate_public_id(length: int = 8) -> str:
-        """Generate URL-safe random ID"""
-        # Calculate bytes needed: length * 3/4 (base64 efficiency)
-        num_bytes = (length * 3 + 3) // 4
-        random_bytes = secrets.token_bytes(num_bytes)
-        return base64.urlsafe_b64encode(random_bytes).decode()[:length]
     
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
-    # Public-facing ID (unique, indexed, YouTube-style string)
-    public_id = Column(String(8), unique=True, nullable=False, default=generate_public_id)
     channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
@@ -62,7 +53,7 @@ class Video(Base):
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
     
     # Relationships
-    channel = relationship("Channel", back_populates="videos")
+    channel = relationship("Channel", back_populates="videos", uselist=False)
     category = relationship("Category", back_populates="videos")
     comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
 

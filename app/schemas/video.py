@@ -65,7 +65,6 @@ class VideoUpdate(BaseModel):
 # Video response schema
 class VideoResponse(BaseModel):
     id: int
-    public_id: str
     status: str
     title: str
     description: str
