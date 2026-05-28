@@ -16,9 +16,17 @@ class CommentService:
         self.auth_service = AuthorizationService(db)
     
     def _to_response(self, comment) -> CommentResponse:
+        # Get username from the user relationship
+        username = "User"
+        if comment.user:
+            username = comment.user.username
+        elif hasattr(comment, 'username') and comment.username:
+            username = comment.username
+            
         return CommentResponse(
             id=comment.id,
             user_id=comment.user_id,
+            username=username,  # ADDED: Username from user relationship
             video_id=comment.video_id,
             parent_id=comment.parent_id,
             body=comment.body,
@@ -73,13 +81,12 @@ class CommentService:
                 detail="Comment not found"
             )
         
-        # Only show approved comments to non-privileged users
-        # This check would be in a separate method if you want to filter
         return self._to_response(comment)
     
     def get_video_comments(
         self, 
-        video_id: int, 
+        video_id: int,
+        sort_by: str,
         page: int = 1, 
         per_page: int = 20,
         current_user: Optional[User] = None
@@ -90,20 +97,25 @@ class CommentService:
             self.db,
             video_id=video_id,
             skip=skip,
-            limit=per_page
+            limit=per_page,
+            sort_by=sort_by
         )
         
         # Filter unapproved comments for non-privileged users
         if current_user:
-            is_privileged = (
-                self.auth_service.is_admin_or_superuser(current_user) or
-                self.auth_service.is_channel_owner(current_user, video_id)
-            )
+            # Get the channel associated with this video
+            video = video_crud.get(self.db, id=video_id)
+            if video:
+                is_privileged = self.auth_service.is_admin_or_channel_owner(current_user, video.channel)
+            else:
+                is_privileged = False
         else:
             is_privileged = False
         
         if not is_privileged:
             comments = [c for c in comments if c.is_approved]
+            # Update total count for filtered results
+            total = len(comments)
         
         comment_responses = [self._to_response(c) for c in comments]
         
@@ -217,7 +229,6 @@ class CommentService:
         self, 
         comment_id: int,
         current_user: User,
-        current_channel: Channel
     ) -> CommentResponse:
         """Approve a comment - requires admin or channel owner privileges"""
         comment = comment_crud.get(self.db, id=comment_id)
@@ -228,7 +239,7 @@ class CommentService:
             )
         
         # Check approval permissions
-        if not self.auth_service.can_approve_comment(current_user, current_channel):
+        if not self.auth_service.can_approve_comment(current_user, current_user.channel):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to approve comments"

@@ -20,7 +20,7 @@ class Comment(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    user = relationship("User", back_populates="comments")
+    user = relationship("User", back_populates="comments", lazy="joined")
     video = relationship("Video", back_populates="comments")
     parent = relationship("Comment", remote_side=[id], back_populates="replies")
     replies = relationship("Comment", back_populates="parent", cascade="all, delete-orphan")

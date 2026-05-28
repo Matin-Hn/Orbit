@@ -16,39 +16,66 @@ class AuthorizationService:
         return comment.user_id == user.id
     
     def is_admin_or_channel_owner(self, user: User, channel: Channel) -> bool:
-        """Check if user has admin or superuser privileges"""
-        return user.role is UserRole.ADMIN or channel.user_id == user.id
-    
-    def can_modify_comment(self, user: User, comment: Comment, channel: Channel) -> bool:
-        """Check if user can modify (update/delete) a comment"""
-        # Admins, comment owner and channel owner can modify
-        if self.is_admin_or_channel_owner(user, channel) or self.is_comment_owner:
-            return True
+        """Check if user has admin or channel owner privileges"""
+        # Check if channel exists (might be None)
+        if channel is None:
+            return user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
         
-        # 
-        video = self.db.query(Video).filter(Video.id == comment.video_id).first()
-        if video and self.is_video_owner(user, video):
+        # Admin, superuser, or channel owner
+        return (
+            user.role in [UserRole.ADMIN, UserRole.SUPERUSER] or 
+            channel.user_id == user.id
+        )
+    
+    def is_video_owner(self, user: User, video: Video) -> bool:
+        """Check if user owns the video's channel"""
+        if not video or not video.channel:
+            return False
+        return video.channel.user_id == user.id
+    
+    def can_modify_comment(self, user: User, comment: Comment) -> bool:
+        """Check if user can modify (update/delete) a comment"""
+        # Comment owner can always modify their own comment
+        if self.is_comment_owner(user, comment):
             return True
         
         # Superuser can modify any comment
         if user.role == UserRole.SUPERUSER:
             return True
         
+        # Get the video and check if user owns the channel
+        video = self.db.query(Video).filter(Video.id == comment.video_id).first()
+        if video and video.channel and self.is_video_owner(user, video):
+            return True
+        
+        # Admin can modify comments on their own channel's videos
+        if user.role == UserRole.ADMIN:
+            if video and video.channel and self.is_admin_or_channel_owner(user, video.channel):
+                return True
+        
         return False
     
     def can_approve_comment(self, user: User, channel: Channel) -> bool:
         """Check if user can approve comments"""
-        # Admins and channel owner can approve comment
+        # Channel owner, admin, or superuser can approve
         if self.is_admin_or_channel_owner(user, channel):
             return True
         
         return False
     
-    def can_pin_comment(self, user: User, comment: Comment, channel: Channel) -> bool:
+    def can_pin_comment(self, user: User, comment: Comment) -> bool:
         """Check if user can pin/unpin comments"""
-        # Only channel owner or admin can pin
+        # Get the video associated with the comment
         video = self.db.query(Video).filter(Video.id == comment.video_id).first()
-        if video and self.is_admin_or_channel_owner(user, channel):
+        if not video:
+            return False
+        
+        # Superuser can pin any comment
+        if user.role == UserRole.SUPERUSER:
             return True
-            
+        
+        # Channel owner or admin can pin comments on their videos
+        if video.channel and self.is_admin_or_channel_owner(user, video.channel):
+            return True
+        
         return False

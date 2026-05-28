@@ -22,6 +22,7 @@ class CommentApprove(BaseModel):
 class CommentResponse(CommentBase):
     id: int
     user_id: int
+    username: str
     video_id: int
     is_pinned: bool
     is_edited: bool

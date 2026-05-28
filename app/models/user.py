@@ -13,6 +13,7 @@ from app.core.database import Base
 
 
 class UserRole(str, enum.Enum):
+    SUPERUSER = "superuser"
     ADMIN = "admin"
     MODERATOR = "moderator"
     USER = "user"
@@ -37,5 +38,5 @@ class User(Base):
     created_date = Column(DateTime, server_default=func.now())
     updated_date = Column(DateTime, server_default=func.now(),server_onupdate=func.now())
 
-    channel = relationship("Channel", back_populates="user")
+    channel = relationship("Channel", back_populates="user", uselist=False)
     comments = relationship("Comment", back_populates="user")

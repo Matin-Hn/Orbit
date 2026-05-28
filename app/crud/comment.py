@@ -1,10 +1,12 @@
 # app/crud/comment.py
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Literal
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
 from app.models.comment import Comment
 from app.schemas.comment import CommentCreate, CommentUpdate
+from sqlalchemy import and_, func, desc
+
 
 class CRUDComment:
     def __init__(self, model=Comment):
@@ -24,7 +26,8 @@ class CRUDComment:
         *, 
         video_id: int,
         skip: int = 0,
-        limit: int = 20
+        limit: int = 20,
+        sort_by: Literal["newest", "popular"] = "newest"
     ) -> Tuple[List[Comment], int]:
         query = db.query(self.model).filter(
             and_(
@@ -33,12 +36,45 @@ class CRUDComment:
                 self.model.parent_id.is_(None)
             )
         )
-        
         total = query.count()
-        comments = query.order_by(
-            self.model.is_pinned.desc(),
-            self.model.created_at.desc()
-        ).offset(skip).limit(limit).all()
+
+        if sort_by == "newest":
+            # Pinned comments first, then newest
+            comments = query.order_by(
+                self.model.is_pinned.desc(),
+                self.model.created_at.desc()
+            ).offset(skip).limit(limit).all()
+        
+        elif sort_by == "popular":
+            # Pinned first, then by reply count (most replies = most popular)
+            # This uses a subquery to count replies
+            from sqlalchemy.orm import aliased
+            Reply = aliased(self.model)
+            
+            reply_count_subquery = (
+                db.query(
+                    self.model.id,
+                    func.count(Reply.id).label('reply_count')
+                )
+                .outerjoin(Reply, Reply.parent_id == self.model.id)
+                .filter(
+                    and_(
+                        self.model.video_id == video_id,
+                        self.model.deleted_at.is_(None),
+                        self.model.parent_id.is_(None)
+                    )
+                )
+                .group_by(self.model.id)
+                .subquery()
+            )
+            comments = query.outerjoin(
+                reply_count_subquery, 
+                self.model.id == reply_count_subquery.c.id
+            ).order_by(
+                self.model.is_pinned.desc(),
+                desc(func.coalesce(reply_count_subquery.c.reply_count, 0)),
+                self.model.created_at.desc()
+            ).offset(skip).limit(limit).all()
         
         return comments, total
     

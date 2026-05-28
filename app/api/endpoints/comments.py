@@ -1,7 +1,7 @@
 # app/api/v1/endpoints/comments.py
 from fastapi import APIRouter, Depends, Query, Path, status
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Literal
 
 from app.api.deps import get_db
 from app.schemas.comment import (
@@ -49,6 +49,7 @@ async def get_video_comments(
     video_id: int = Path(..., gt=0),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    sort_by: Literal["newest", "popular"] = Query("newest", description="Sort order for comments"),
     current_user: Optional[User] = Depends(get_current_user_from_cookie),
     comment_service: CommentService = Depends(get_comment_service)
 ):
@@ -60,6 +61,7 @@ async def get_video_comments(
         video_id=video_id,
         page=page,
         per_page=per_page,
+        sort_by = sort_by,
         current_user=current_user if current_user else None
     )
 
@@ -112,7 +114,6 @@ async def delete_comment(
 async def approve_comment(
     comment_id: int = Path(..., gt=0),
     current_user: User = Depends(get_current_user_from_cookie),
-    current_channel: Channel = Depends(get_current_channel),
     comment_service: CommentService = Depends(get_comment_service),
 ):
     """
@@ -122,4 +123,4 @@ async def approve_comment(
     - Admin
     - Superuser
     """
-    return comment_service.approve_comment(comment_id, current_user, current_channel)
+    return comment_service.approve_comment(comment_id, current_user)
