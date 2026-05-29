@@ -8,7 +8,8 @@ class CommentBase(BaseModel):
     parent_id: Optional[int] = Field(None, description="Parent comment ID for replies")
 
 class CommentCreate(CommentBase):
-    video_id: int = Field(..., description="Video ID to comment on")
+    video_id: Optional[int] = Field(None)
+    public_id: str = Field(..., description="Video public ID to comment on")
 
 class CommentUpdate(BaseModel):
     body: Optional[str] = Field(None, min_length=1, max_length=5000)

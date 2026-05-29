@@ -13,6 +13,7 @@ from app.schemas.comment import (
 )
 from app.services.auth_service import get_current_user_from_cookie, get_current_channel
 from app.services.comment_service import CommentService
+from app.services.video_service import get_video_by_public_id
 from app.models.user import User
 from app.models.channel import Channel
 
@@ -25,12 +26,15 @@ def get_comment_service(db: Session = Depends(get_db)) -> CommentService:
 async def create_comment(
     comment_data: CommentCreate,
     current_user: User = Depends(get_current_user_from_cookie),
+    db: Session = Depends(get_db),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     """
     Create a new comment or reply to an existing comment.
     **Requires authentication**
     """
+    video = get_video_by_public_id(db, comment_data.public_id, current_user)
+    comment_data.video_id = video.id
     return comment_service.create_comment(comment_data, current_user)
 
 @router.get("/{comment_id}", response_model=CommentResponse)
@@ -44,21 +48,23 @@ async def get_comment(
     """
     return comment_service.get_comment(comment_id)
 
-@router.get("/video/{video_id}", response_model=CommentListResponse)
+@router.get("/video/{public_id}", response_model=CommentListResponse)
 async def get_video_comments(
-    video_id: int = Path(..., gt=0),
+    public_id: str = Path(...),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     sort_by: Literal["newest", "popular"] = Query("newest", description="Sort order for comments"),
     current_user: Optional[User] = Depends(get_current_user_from_cookie),
+    db: Session = Depends(get_db),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     """
     Get all root comments for a video with pagination.
     **Public access** - Unapproved comments are hidden from regular users
     """
+    video = get_video_by_public_id(db, public_id=public_id, requesting_user_id=current_user.id if current_user else None)
     return comment_service.get_video_comments(
-        video_id=video_id,
+        video_id=video.id,
         page=page,
         per_page=per_page,
         sort_by = sort_by,
