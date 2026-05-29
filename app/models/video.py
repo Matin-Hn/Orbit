@@ -1,17 +1,28 @@
-import base64
-import secrets
-
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey, TIMESTAMP, CheckConstraint, Index
+import enum
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey, TIMESTAMP, CheckConstraint, Index, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from app.core.database import Base
 
+
+class VideoStatus(str, enum.Enum):
+    uploading = "uploading"
+    processing = "processing"
+    ready = "ready"
+    failed = "failed"
+
+class VideoVisibility(str, enum.Enum):
+    public = "public"
+    private = "private"
+    unlisted = "unlisted"
+
+
 class Video(Base):
     __tablename__ = "videos"
     
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
@@ -38,8 +49,8 @@ class Video(Base):
     sprite_rows = Column(Integer, nullable=True)         # number of rows in sprite grid
 
 
-    status = Column(String(20), nullable=False)
-    visibility = Column(String(10), nullable=False, default="public")
+    status = Column(Enum(VideoStatus), nullable=False)
+    visibility = Column(Enum(VideoVisibility), nullable=False, default=VideoVisibility.public)
     scheduled_at = Column(TIMESTAMP(timezone=True), nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     language = Column(String(50), nullable=False, default="en")
@@ -56,6 +67,7 @@ class Video(Base):
     channel = relationship("Channel", back_populates="videos", uselist=False)
     category = relationship("Category", back_populates="videos")
     comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
+    public_id = relationship("VideoPublicId", back_populates="video", uselist=False)
 
     
     # Table constraints
