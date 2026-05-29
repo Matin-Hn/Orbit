@@ -36,6 +36,7 @@ from app.models.video import Video
 from app.models.channel import Channel
 from app.models.category import Category
 from app.models.comment import Comment
+from app.models.video_public_id import VideoPublicId
 
 target_metadata = Base.metadata
 

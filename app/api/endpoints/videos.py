@@ -23,6 +23,8 @@ from app.schemas.video import (
     VideoCompleteResponse
 )
 from app.services.storage import storage_service
+from app.services.public_video_id import create_public_id
+from app.services.video_service import get_video_by_public_id
 from app.core.config import settings
 from app.tasks.video_tasks import transcode_video_task
 from app.ws.manager import manager
@@ -174,6 +176,10 @@ async def complete_upload(
             db_video.thumbnail_url = storage_service.get_public_url(payload.thumbnail_key)
 
     db.add(db_video)
+    db.flush()  # ← get the auto-generated internal_id before we need it below
+
+    create_public_id(db, internal_id=db_video.id)
+    
     db.commit()
     db.refresh(db_video)
 
@@ -190,9 +196,9 @@ async def complete_upload(
         message="Video accepted for transcoding"
     )
 
-@router.get("/{video_id}/signed-url")
+@router.get("/{public_id}/signed-url")
 async def get_video_signed_manifest_url(
-    video_id: int,
+    public_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie),
 ):
@@ -200,12 +206,7 @@ async def get_video_signed_manifest_url(
     Returns a short-lived signed URL for the HLS manifest (.m3u8).
     Only accessible if the video is ready and the user has viewing rights.
     """
-    video = db.query(Video).filter(
-        Video.id == video_id,
-        Video.deleted_at.is_(None)
-    ).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
+    video = get_video_by_public_id(db, public_id, current_user)
 
     # 1. Video must be in 'ready' state
     if video.status != "ready":
@@ -222,7 +223,7 @@ async def get_video_signed_manifest_url(
     # 3. Determine the S3 key of the HLS manifest.
     #    Based on the transcoding task, the manifest is stored at:
     #       processed/{video_id}/hls/master.m3u8
-    manifest_key = f"processed/{video_id}/hls/master.m3u8"
+    manifest_key = f"processed/{video.id}/hls/master.m3u8"
 
     # 4. Generate a presigned URL valid for 60 seconds (short-lived)
     try:
@@ -235,10 +236,10 @@ async def get_video_signed_manifest_url(
 
     return {"signed_url": signed_url}
 
-@router.websocket("/ws/video/{video_id}")
+@router.websocket("/ws/video/{public_id}")
 async def websocket_video_status(
     websocket: WebSocket,
-    video_id: int,
+    public_id: str,
     db: Session = Depends(get_db)
 ):
     """
@@ -287,9 +288,9 @@ async def websocket_video_status(
         return
 
     # 4. Authorisation: video must belong to the user
-    video = db.query(Video).filter(Video.id == video_id).first()
+    video = get_video_by_public_id(db, public_id, user)
     if not video:
-        await websocket.send_json({"type": "video.error", "videoId": video_id, "error": "Video not found"})
+        await websocket.send_json({"type": "video.error", "videoId": public_id, "error": "Video not found"})
         await websocket.close(code=4004)
         return
 
@@ -307,32 +308,32 @@ async def websocket_video_status(
 
     # 6. Immediate response if already processed
     if video.status == "ready":
-        await websocket.send_json({"type": "video.ready", "videoId": video_id})
+        await websocket.send_json({"type": "video.ready", "videoId": public_id})
         await websocket.close()
         return
     if video.status == "failed":
         await websocket.send_json({
             "type": "video.error",
-            "videoId": video_id,
+            "videoId": public_id,
             "error": video.processing_error or "Transcoding failed"
         })
         await websocket.close()
         return
 
     # 7. Subscribe to Redis for updates
-    await manager.connect(video_id, websocket)
+    await manager.connect(public_id, websocket)
     try:
-        await manager.subscribe(video_id, websocket)
+        await manager.subscribe(public_id, websocket)
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for video {video_id}")
+        logger.info(f"WebSocket disconnected for video {public_id}")
     except Exception as e:
-        logger.error(f"WebSocket error for video {video_id}: {e}")
+        logger.error(f"WebSocket error for video {public_id}: {e}")
         try:
             await websocket.send_json({"type": "error", "message": "Internal error"})
         except Exception:
             pass
     finally:
-        manager.disconnect(video_id, websocket)
+        manager.disconnect(public_id, websocket)
         try:
             await websocket.close()
         except Exception:
