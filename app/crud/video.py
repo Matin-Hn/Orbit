@@ -15,7 +15,7 @@ class CRUDVideo:
             self.model.deleted_at.is_(None)
         ).first()
     
-    def get_by_public_id(self, db: Session, public_id: int):
+    def get_by_public_id(self, db: Session, public_id: str):
         return(
             db.query(Video)
             .join(VideoPublicId, VideoPublicId.internal_id == Video.id)

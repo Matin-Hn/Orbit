@@ -114,20 +114,23 @@ def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
             video.status = "ready"
             db.commit()
 
-            logger.info(f"Video {video_id} processed successfully with sprites")
+            logger.info(f"Video {video.public_id_str} processed successfully with sprites")
             try:
+                pub = video.public_id_str
+                channel_key = f"video:{pub}:status" if pub else f"video:{video_id}:status"
+
                 r = redis.Redis.from_url(settings.REDIS_WS_PUBSUB)
                 r.publish(
-                    f"video:{video_id}:status",
-                    json.dumps({"type": "video.ready", "videoId": video_id})
+                    channel_key,
+                    json.dumps({"type": "video.ready", "videoId": video.public_id_str})
                 )
                 r.close()
-                logger.info(f"Published video.ready event for video {video_id}")
+                logger.info(f"Published video.ready event on {channel_key}")
             except Exception as e:
                 logger.error(f"Failed to publish WebSocket notification: {e}")
                 
     except Exception as e:
-            logger.exception(f"Transcoding failed for video {video_id}")
+            logger.exception(f"Transcoding failed for video {video.public_id_str}")
             if db:
                 video = db.query(Video).filter(Video.id == video_id).first()
                 if video:

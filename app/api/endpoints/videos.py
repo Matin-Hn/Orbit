@@ -191,7 +191,7 @@ async def complete_upload(
     )
 
     return VideoCompleteResponse(
-        video_id=db_video.id,
+        public_id=db_video.public_id_str,
         status="processing",
         message="Video accepted for transcoding"
     )
@@ -206,7 +206,7 @@ async def get_video_signed_manifest_url(
     Returns a short-lived signed URL for the HLS manifest (.m3u8).
     Only accessible if the video is ready and the user has viewing rights.
     """
-    video = get_video_by_public_id(db, public_id, current_user)
+    video = get_video_by_public_id(db, public_id, current_user.id)
 
     # 1. Video must be in 'ready' state
     if video.status != "ready":
@@ -288,10 +288,17 @@ async def websocket_video_status(
         return
 
     # 4. Authorisation: video must belong to the user
-    video = get_video_by_public_id(db, public_id, user)
-    if not video:
-        await websocket.send_json({"type": "video.error", "videoId": public_id, "error": "Video not found"})
-        await websocket.close(code=4004)
+    # FIX: Pass user.id (integer) instead of the user object
+    try:
+        video = get_video_by_public_id(db, public_id, user.id)  # Changed from 'user' to 'user.id'
+    except HTTPException as e:
+        # Convert HTTP exception to WebSocket-friendly error
+        await websocket.send_json({
+            "type": "video.error", 
+            "videoId": public_id, 
+            "error": e.detail
+        })
+        await websocket.close(code=4004 if e.status_code == 404 else 4003)
         return
 
     channel = db.query(Channel).filter(

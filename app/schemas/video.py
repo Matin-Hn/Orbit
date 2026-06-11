@@ -131,6 +131,6 @@ class VideoCompleteRequest(BaseModel):
     thumbnail_key: Optional[str] = None
 
 class VideoCompleteResponse(BaseModel):
-    video_id: int
+    public_id: str
     status: str
     message: str
