@@ -6,7 +6,7 @@ celery_app = Celery(
     "video_processor",
     broker= settings.CELERY_BROKER_URL,
     backend= settings.CELERY_RESULT_BACKEND,
-    include=['app.tasks.video_tasks']
+    include=['app.tasks.video_tasks', 'app.tasks.reactions_tasks']
 )
 
 # celery_app.conf.update(
