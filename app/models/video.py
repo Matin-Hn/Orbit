@@ -2,21 +2,22 @@ import enum
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey, TIMESTAMP, CheckConstraint, Index, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import Base
 
 
-class VideoStatus(str, enum.Enum):
+class VideoStatus(str, enum.Enum):  # TODO: change the keys to uppercase
     uploading = "uploading"
     processing = "processing"
     ready = "ready"
     failed = "failed"
 
 class VideoVisibility(str, enum.Enum):
-    public = "public"
-    private = "private"
-    unlisted = "unlisted"
+    PUBLIC = "public"
+    UNLISTED = "unlisted"
+    PRIVATE = "private"
+    SCHEDULED = "scheduled"
 
 
 class Video(Base):
@@ -49,8 +50,15 @@ class Video(Base):
     sprite_rows = Column(Integer, nullable=True)         # number of rows in sprite grid
 
 
-    status = Column(Enum(VideoStatus), nullable=False)
-    visibility = Column(Enum(VideoVisibility), nullable=False, default=VideoVisibility.public)
+    status = Column(
+        Enum(VideoStatus, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
+    )
+    visibility = Column(
+        Enum(VideoVisibility, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=VideoVisibility.PUBLIC
+    )
     scheduled_at = Column(TIMESTAMP(timezone=True), nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     language = Column(String(50), nullable=False, default="en")
@@ -68,6 +76,8 @@ class Video(Base):
     category = relationship("Category", back_populates="videos")
     comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
     public_id = relationship("VideoPublicId", back_populates="video", uselist=False)
+    stats = relationship("VideoStats", back_populates="video")
+    reactions = relationship("VideoReaction", back_populates="video")
 
     
     # Table constraints
@@ -83,12 +93,15 @@ class Video(Base):
     
     @property
     def is_published(self) -> bool:
-        """Check if video is published (not deleted and published_at <= now)"""
         if self.deleted_at:
             return False
-        if self.visibility == "scheduled" and self.scheduled_at:
-            return self.scheduled_at <= datetime.now(datetime.timezone.utc)()
-        return self.visibility != "private"
+        if self.visibility == VideoVisibility.SCHEDULED and self.scheduled_at:
+            return self.scheduled_at <= datetime.now(timezone.utc)  # fixed
+        return self.visibility != VideoVisibility.PRIVATE
+    
+    @property
+    def public_id_str(self) -> str | None:
+        return self.public_id.public_id if self.public_id else None
     
     def __repr__(self):
         return f"<Video(id={self.id}, title={self.title}, channel_id={self.channel_id})>"

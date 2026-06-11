@@ -17,14 +17,14 @@ def get_video_by_public_id(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
 
     # Visibility rules
-    if video.visibility == VideoVisibility.public:
+    if video.visibility == VideoVisibility.PUBLIC:
         return video
 
     # Private and unlisted require the requester to own the video (or be authenticated at minimum)
     if requesting_user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
-    if video.visibility == VideoVisibility.private:
+    if video.visibility == VideoVisibility.PRIVATE:
         # Only the channel owner can see their own private videos
         # Assumes Channel model has an owner_user_id — adjust to your field name
         if video.channel.owner_user_id != requesting_user_id:
