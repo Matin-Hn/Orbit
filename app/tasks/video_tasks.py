@@ -39,11 +39,11 @@ def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
       7. Update video record with HLS URL, poster URL, duration, status.
     """
     db: Session = SessionLocal()
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        logger.error(f"Video {video_id} not found")
+        return
     try:
-        video = db.query(Video).filter(Video.id == video_id).first()
-        if not video:
-            logger.error(f"Video {video_id} not found")
-            return
 
         video.status = "processing"
         db.commit()
