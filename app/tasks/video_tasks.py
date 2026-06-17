@@ -11,7 +11,7 @@ import redis
 from celery import shared_task
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.database import SyncSessionLocal
 from app.services.storage import storage_service
 from app.core.config import settings
 from app.core.celery_app import celery_app
@@ -38,7 +38,7 @@ def transcode_video_task(self, video_id: int, original_key: str, bucket: str):
       6. Upload HLS playlist & segments + poster to S3 (processed/ prefix).
       7. Update video record with HLS URL, poster URL, duration, status.
     """
-    db: Session = SessionLocal()
+    db: Session = SyncSessionLocal()
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         logger.error(f"Video {video_id} not found")

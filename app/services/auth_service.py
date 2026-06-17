@@ -1,22 +1,19 @@
 from typing import Any
 import uuid
-import hashlib
 import jwt
-from jwt.exceptions import DecodeError,InvalidSignatureError, ExpiredSignatureError
+from jwt.exceptions import DecodeError, InvalidSignatureError, ExpiredSignatureError
 from datetime import timedelta, datetime, timezone
-from http.cookies import SimpleCookie
 import logging
 
+from fastapi import HTTPException, Request, status, Depends
 
-from fastapi import HTTPException, Request, status, Depends, WebSocket, WebSocketDisconnect
-
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.user import User, UserRole
 from app.models.channel import Channel
 from app.api.deps import get_db
-from app.core.database import SessionLocal
 
 
 logger = logging.getLogger(__name__)
@@ -27,13 +24,13 @@ def create_access_token(
 ) -> str:
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {
-        "exp": expire, 
+        "exp": expire,
         "sub": str(subject),
         "type": "access"  # Helps identify token type
     }
     access_token = jwt.encode(
-        to_encode, 
-        settings.SECRET_KEY, 
+        to_encode,
+        settings.SECRET_KEY,
         algorithm=settings.ALGORITHM
     )
 
@@ -46,7 +43,7 @@ def create_refresh_token(
 ) -> str:
     jti = str(uuid.uuid4())
     expire = datetime.now(timezone.utc) + expires_delta
-    
+
     to_encode = {
         "exp": expire,
         "sub": str(subject),
@@ -60,7 +57,7 @@ def create_refresh_token(
     )
 
 
-def decode_refresh_token(refresh_token: str) -> str:    
+def decode_refresh_token(refresh_token: str) -> str:
     # Decode and verify
     try:
         payload = jwt.decode(
@@ -72,53 +69,54 @@ def decode_refresh_token(refresh_token: str) -> str:
         return user_id
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Invalid refresh token")
-    
+
 
 
 async def get_current_user_from_cookie(
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ) -> User:
     """Alternative: Extract JWT from cookie"""
-    
+
     token = request.cookies.get("access_token")
-    
+
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
         )
-    
+
     # Same decoding logic as above
     try:
         payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
+            token,
+            settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM]
         )
         user_id: int = int(payload.get("sub"))
-        
+
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token, user_id is missing"
             )
-        
-        user = db.query(User).filter(User.id == user_id).first()
+
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar_one_or_none()
         if user is None or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found or inactive"
             )
         return user
-            
+
     except DecodeError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, decode failed")
     except InvalidSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, invalid signature")
     except ExpiredSignatureError:
-        
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, token expired")        
+
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, token expired")
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Authentication error, {e}")
 
@@ -132,15 +130,18 @@ def require_admin(current_user: User = Depends(get_current_user_from_cookie)):
     return current_user
 
 
-def get_current_channel(
-    db: Session = Depends(get_db),
+async def get_current_channel(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie)
 ) -> Channel:
     """Return the channel owned by the current user."""
-    channel = db.query(Channel).filter(
-        Channel.user_id == current_user.id,
-        Channel.is_suspended == False
-    ).first()
+    result = await db.execute(
+        select(Channel).filter(
+            Channel.user_id == current_user.id,
+            Channel.is_suspended == False
+        )
+    )
+    channel = result.scalar_one_or_none()
     if not channel:
         raise HTTPException(
             status_code=404,

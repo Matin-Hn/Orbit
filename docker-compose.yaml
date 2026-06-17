@@ -72,7 +72,7 @@ services:
       - minio
     environment:
       - SECRET_KEY=K3IG57oVaoO/d0qzs/JZh1LmGHE4YYI0xPP1xm+oANc=
-      - SQLALCHEMY_DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - SQLALCHEMY_DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/postgres
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - ALGORITHM=HS256
@@ -109,7 +109,7 @@ services:
       - redis
     environment:
       - SECRET_KEY=K3IG57oVaoO/d0qzs/JZh1LmGHE4YYI0xPP1xm+oANc=
-      - SQLALCHEMY_DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - SQLALCHEMY_DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/postgres
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - ALGORITHM=HS256

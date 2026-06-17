@@ -3,7 +3,8 @@ import uuid
 import jwt
 import logging
 from datetime import timedelta
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
@@ -49,7 +50,7 @@ def generate_video_key(original_filename: str) -> str:
 )
 async def request_video_upload(
     filename: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie),
     current_channel: Channel = Depends(get_current_channel)
 ):
@@ -59,11 +60,14 @@ async def request_video_upload(
     """
 
     # 1. Verify the user owns the channel
-    channel = db.query(Channel).filter(
-        Channel.id == current_channel.id,
-        Channel.user_id == current_user.id,
-        Channel.is_suspended == False
-    ).first()
+    result = await db.execute(
+        select(Channel).filter(
+            Channel.id == current_channel.id,
+            Channel.user_id == current_user.id,
+            Channel.is_suspended == False
+        )
+    )
+    channel = result.scalar_one_or_none()
     if not channel:
         raise HTTPException(
             status_code=403,
@@ -91,18 +95,21 @@ async def request_video_upload(
 @router.get("/thumbnail-upload-url", response_model=UploadUrlResponse)
 async def get_thumbnail_upload_url(
     filename: str = "thumbnail.jpg",
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     content_type: str = "image/jpeg",
     current_user: User = Depends(get_current_user_from_cookie),
     current_channel: Channel = Depends(get_current_channel)
 ):
     """Return presigned PUT URL for a custom thumbnail."""
     # Verify channel ownership (same as video upload)
-    channel = db.query(Channel).filter(
-        Channel.id == current_channel.id,
-        Channel.user_id == current_user.id,
-        Channel.is_suspended == False
-    ).first()
+    result = await db.execute(
+        select(Channel).filter(
+            Channel.id == current_channel.id,
+            Channel.user_id == current_user.id,
+            Channel.is_suspended == False
+        )
+    )
+    channel = result.scalar_one_or_none()
     if not channel:
         raise HTTPException(status_code=403, detail="Channel not owned by user")
 
@@ -127,7 +134,7 @@ async def get_thumbnail_upload_url(
 @router.post("/complete", status_code=status.HTTP_202_ACCEPTED, response_model=VideoCompleteResponse)
 async def complete_upload(
     payload: VideoCompleteRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie),
     current_channel: Channel = Depends(get_current_channel)
 ):
@@ -136,18 +143,21 @@ async def complete_upload(
     Creates Video record, triggers transcoding job.
     """
     # Verify channel ownership
-    channel = db.query(Channel).filter(
-        Channel.id == current_channel.id,
-        Channel.user_id == current_user.id,
-        Channel.is_suspended == False
-    ).first()
+    result = await db.execute(
+        select(Channel).filter(
+            Channel.id == current_channel.id,
+            Channel.user_id == current_user.id,
+            Channel.is_suspended == False
+        )
+    )
+    channel = result.scalar_one_or_none()
     if not channel:
         raise HTTPException(status_code=403, detail="Channel not found or not owned")
-    
+
     # Optional: check that the object actually exists in S3
     if not await storage_service.object_exists(payload.object_key):
         raise HTTPException(status_code=400, detail="File not found in storage. Upload may have failed.")
-    
+
     # Create video record
     db_video = Video(
         channel_id=channel.id,
@@ -176,12 +186,12 @@ async def complete_upload(
             db_video.thumbnail_url = storage_service.get_public_url(payload.thumbnail_key)
 
     db.add(db_video)
-    db.flush()  # ← get the auto-generated internal_id before we need it below
+    await db.flush()  # ← get the auto-generated internal_id before we need it below
 
-    create_public_id(db, internal_id=db_video.id)
-    
-    db.commit()
-    db.refresh(db_video)
+    await create_public_id(db, internal_id=db_video.id)
+
+    await db.commit()
+    await db.refresh(db_video)
 
     # Trigger Celery task
     transcode_video_task.delay(
@@ -199,14 +209,14 @@ async def complete_upload(
 @router.get("/{public_id}/signed-url")
 async def get_video_signed_manifest_url(
     public_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_from_cookie),
 ):
     """
     Returns a short-lived signed URL for the HLS manifest (.m3u8).
     Only accessible if the video is ready and the user has viewing rights.
     """
-    video = get_video_by_public_id(db, public_id, current_user.id)
+    video = await get_video_by_public_id(db, public_id, current_user.id)
 
     # 1. Video must be in 'ready' state
     if video.status != "ready":
@@ -240,7 +250,7 @@ async def get_video_signed_manifest_url(
 async def websocket_video_status(
     websocket: WebSocket,
     public_id: str,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Real‑time video processing status via WebSocket.
@@ -281,7 +291,8 @@ async def websocket_video_status(
         await websocket.close(code=4001)
         return
 
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalar_one_or_none()
     if not user or not user.is_active:
         await websocket.send_json({"type": "auth_error", "message": "User not found"})
         await websocket.close(code=4001)
@@ -290,21 +301,24 @@ async def websocket_video_status(
     # 4. Authorisation: video must belong to the user
     # FIX: Pass user.id (integer) instead of the user object
     try:
-        video = get_video_by_public_id(db, public_id, user.id)  # Changed from 'user' to 'user.id'
+        video = await get_video_by_public_id(db, public_id, user.id)  # Changed from 'user' to 'user.id'
     except HTTPException as e:
         # Convert HTTP exception to WebSocket-friendly error
         await websocket.send_json({
-            "type": "video.error", 
-            "videoId": public_id, 
+            "type": "video.error",
+            "videoId": public_id,
             "error": e.detail
         })
         await websocket.close(code=4004 if e.status_code == 404 else 4003)
         return
 
-    channel = db.query(Channel).filter(
-        Channel.id == video.channel_id,
-        Channel.user_id == user.id
-    ).first()
+    result = await db.execute(
+        select(Channel).filter(
+            Channel.id == video.channel_id,
+            Channel.user_id == user.id
+        )
+    )
+    channel = result.scalar_one_or_none()
     if not channel:
         await websocket.send_json({"type": "auth_error", "message": "Access denied"})
         await websocket.close(code=4003)

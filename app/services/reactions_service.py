@@ -1,58 +1,42 @@
 from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy.orm import Session
-
-from app.models.user import User
 from app.core.exceptions import ReactionNotFound, ReactionTypeMismatch
 from app.schemas.reaction import ReactionCreate, ReactionUpdate
 from app.crud.reaction import reaction as reaction_crud
 
+
 class ReactionService:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def set_reaction(
-            self,
-            requesting_user_id: int,
-            reaction_type:str,
-            video_id: int
-    ):
-        # Check if user exist
-        existing_db_reaction = reaction_crud.get_by_video_and_user(
+    async def set_reaction(self, requesting_user_id: int, reaction_type: str, video_id: int):
+        existing_db_reaction = await reaction_crud.get_by_video_and_user(
             db=self.db, user_id=requesting_user_id, video_id=video_id
         )
-        
+
         if not existing_db_reaction:
-            obj_in = ReactionCreate(
-                type=reaction_type,
-                video_id=video_id
-            )
-            new_reaction = reaction_crud.create(self.db, obj_in, requesting_user_id)
+            obj_in = ReactionCreate(type=reaction_type, video_id=video_id)
+            await reaction_crud.create(self.db, obj_in, requesting_user_id)  # ← was missing await
             return {"status": "created", "type": reaction_type}
 
-        # Check if user already reacted with same type 
         elif existing_db_reaction.type == reaction_type:
             return {"status": "unchanged", "type": reaction_type}
-        
+
         else:
-            obj_in = ReactionUpdate(
-                type=reaction_type
-            )
-            reaction_crud.update(self.db, existing_db_reaction, obj_in)
+            obj_in = ReactionUpdate(type=reaction_type)
+            await reaction_crud.update(self.db, existing_db_reaction, obj_in)  # ← was missing await
             return {"status": "changed", "type": reaction_type}
-        
-    def delete_reaction(
-            self,
-            reaction_type: str,
-            requesting_user_id: int,
-            video_id: int
+
+    async def delete_reaction(  # ← was missing async
+            self, reaction_type: str, requesting_user_id: int, video_id: int
     ):
-        existing = reaction_crud.get_by_video_and_user(
+        existing = await reaction_crud.get_by_video_and_user(  # ← was missing await
             db=self.db, user_id=requesting_user_id, video_id=video_id
         )
         if not existing:
             raise ReactionNotFound(f"No reaction for user={requesting_user_id} video={video_id}")
         elif existing.type != reaction_type:
             raise ReactionTypeMismatch(f"Expected {reaction_type}, found {existing.type}")
-        reaction_crud.delete(self.db, existing)
+        await reaction_crud.delete(self.db, existing)  # ← was missing await
         return {"message": "reaction deleted"}

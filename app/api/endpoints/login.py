@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.responses import JSONResponse
@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.schemas.user import UserCreate, UserLogin
 from app.api.deps import get_db
 from app.crud.users import (
+    get_user_by_id,
     get_user_by_username,
     get_user_by_email,
     create_user,
@@ -21,7 +22,7 @@ router = APIRouter(tags=["login"])
 @router.post("/register")
 async def register_user(
     request: UserCreate,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Register new user using payload data
@@ -31,14 +32,14 @@ async def register_user(
     Returns:
     - Json massage if everything ok
     """
-    existing_user = get_user_by_username(db, request.username)
+    existing_user = await get_user_by_username(db, request.username)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
         )
     
-    existing_email = get_user_by_email(db, request.email)
+    existing_email = await get_user_by_email(db, request.email)
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -53,7 +54,7 @@ async def register_user(
     user_data.pop("confirm_password")
     user_data["password_hash"] = password_hash
 
-    create_user(db, user_data)
+    await create_user(db, user_data)
     
     raise HTTPException(
         status_code=status.HTTP_201_CREATED,
@@ -65,10 +66,10 @@ async def register_user(
 async def login_user(
     response: Response,
     request: UserLogin,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     try:
-        user = authenticate(db=db, username=request.username, password=request.password)
+        user = await authenticate(db=db, username=request.username, password=request.password)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -110,13 +111,21 @@ async def login_user(
 
 
 @router.post("/refresh")
-def get_refreshed_token(request: Request, response: Response):
+async def get_refreshed_token(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db)
+):
     """Get a new access token using old access token(even expired)"""
     try:
         refresh_token = request.cookies.get("refresh_token")
         user_id = decode_refresh_token(refresh_token)
 
-        new_access = create_access_token(user_id)
+        user = await get_user_by_id(db, user_id)
+        if user:
+            new_access = create_access_token(user_id)
+        else:
+            raise HTTPException(404, "User not found")
 
         response.set_cookie(
             key="access_token",

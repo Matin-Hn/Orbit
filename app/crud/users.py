@@ -1,43 +1,48 @@
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.user import UserCreate
 from app.models.user import User, UserRole
 from app.core.security import verify_password, get_password_hash
 
 
-def get_user_by_username(db: Session, username: str) -> Optional[User]:
+async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
     """Get user by username"""
-    return db.query(User).filter(User.username == username).first()
+    result = await db.execute(select(User).filter(User.username == username))
+    return result.scalar_one_or_none()
 
-def get_user_by_id(db: Session, user_id: str) -> Optional[User]:
-    """Get user by username"""
-    return db.query(User).filter(User.id == user_id).first()
+async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+    """Get user by id"""
+    result = await db.execute(select(User).filter(User.id == int(user_id)))
+    return result.scalar_one_or_none()
 
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     """Get user by email"""
-    return db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).filter(User.email == email))
+    return result.scalar_one_or_none()
 
-def create_user(db: Session, user:UserCreate):
+async def create_user(db: AsyncSession, user: UserCreate):
     """Create new user"""
     db_user = User(**user)
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user
 
-def delete_user_from_db(db: Session, db_user: User):
-    db.delete(db_user)
-    db.commit()
+async def delete_user_from_db(db: AsyncSession, db_user: User):
+    await db.delete(db_user)
+    await db.commit()
 
 # Dummy hash to use for timing attack prevention when user is not found
 # This is an Argon2 hash of a random password, used to ensure constant-time comparison
 DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$MjQyZWE1MzBjYjJlZTI0Yw$YTU4NGM5ZTZmYjE2NzZlZjY0ZWY3ZGRkY2U2OWFjNjk"
 
 
-def authenticate(db: Session, username: str, password: str):
-    db_user = db.query(User).filter(User.username == username).first()
+async def authenticate(db: AsyncSession, username: str, password: str):
+    result = await db.execute(select(User).filter(User.username == username))
+    db_user = result.scalar_one_or_none()
     if not db_user:
         # Prevent timing attacks by running password verification even when user doesn't exist
         # This ensures the response time is similar whether or not the email exists
@@ -49,15 +54,15 @@ def authenticate(db: Session, username: str, password: str):
     if updated_password_hash:
         db_user.password_hash = updated_password_hash
         db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        await db.commit()
+        await db.refresh(db_user)
     return db_user
 
 
-def create_admin_user(db: Session, email: str, username: str, password: str, creator_admin_id: int = None):
+async def create_admin_user(db: AsyncSession, email: str, username: str, password: str, creator_admin_id: int = None):
     """Create a new admin user"""
     hashed_password = get_password_hash(password)
-    
+
     admin_user = User(
         email=email,
         username=username,
@@ -65,8 +70,8 @@ def create_admin_user(db: Session, email: str, username: str, password: str, cre
         role=UserRole.ADMIN,
         created_by_admin_id=creator_admin_id
     )
-    
+
     db.add(admin_user)
-    db.commit()
-    db.refresh(admin_user)
+    await db.commit()
+    await db.refresh(admin_user)
     return admin_user

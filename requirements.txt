@@ -6,6 +6,7 @@ pwdlib[bcrypt]
 sqlalchemy
 fastapi-swagger==0.4.45
 psycopg2-binary
+asyncpg
 alembic
 celery[redis]
 redis

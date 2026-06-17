@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.models.video_public_id import VideoPublicId
@@ -10,7 +10,7 @@ class PublicIdCollisionError(Exception):
     pass
 
 
-def create_public_id(db: Session, internal_id: int) -> VideoPublicId:
+async def create_public_id(db: AsyncSession, internal_id: int) -> VideoPublicId:
     """
     Generate a unique public_id and persist it linked to the given internal_id.
     Must be called within an existing transaction (same session as video creation).
@@ -21,11 +21,11 @@ def create_public_id(db: Session, internal_id: int) -> VideoPublicId:
 
         try:
             db.add(mapping)
-            db.flush()  # ← hit the DB to check uniqueness, but don't commit yet
+            await db.flush()  # ← hit the DB to check uniqueness, but don't commit yet
             return mapping
 
         except IntegrityError:
-            db.rollback()  # ← roll back only the flush, not the whole transaction
+            await db.rollback()  # ← roll back only the flush, not the whole transaction
             if attempt == _MAX_RETRIES:
                 raise PublicIdCollisionError(
                     f"Could not generate a unique public_id after {_MAX_RETRIES} attempts."

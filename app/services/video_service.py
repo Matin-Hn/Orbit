@@ -6,12 +6,12 @@ from app.models.video_public_id import VideoPublicId
 from app.crud.video import video as video_crud
 
 
-def get_video_by_public_id(
+async def get_video_by_public_id(
     db: Session,
     public_id: str,
     requesting_user_id: int | None,  # None = unauthenticated
 ) -> Video:
-    video = video_crud.get_by_public_id(db, public_id)
+    video = await video_crud.get_by_public_id(db, public_id)
 
     if video is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
