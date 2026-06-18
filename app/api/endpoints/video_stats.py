@@ -9,17 +9,20 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path
 from app.models.user import User
 from app.models.video_reaction import ReactionType
 from app.schemas.reaction import ReactionResponse
+from app.schemas.video_stats import VideoStatsResponse
 from app.services.auth_service import get_current_user_from_cookie
 from app.services.video_service import get_video_by_public_id
-from app.services.like_counter_service import LikeCounter
+from app.services.video_stats_counter import LikeCounter, ViewCounter
 from app.tasks.reactions_tasks import upsert_video_reaction, delsert_video_reaction
 from app.api.deps import get_db
 from app.core.redis import get_redis
 
-router = APIRouter(prefix="/videos", tags=["reactions"])
+router = APIRouter(prefix="/videos", tags=["video_stats"])
 
-logger = logging(__name__)
+logger = logging.getLogger(__name__)
 
+
+# Reaction Endpoints
 @router.post("/{video_public_id}/react/{reaction_type}", response_model=ReactionResponse, status_code=status.HTTP_200_OK)
 async def create_update_reaction(
     reaction_type: Literal["like", "dislike"] = Path(...),
@@ -29,7 +32,7 @@ async def create_update_reaction(
     redis: Redis = Depends(get_redis)
 ):
     counter = LikeCounter(redis=redis, db=db)
-    video = get_video_by_public_id(
+    video = await get_video_by_public_id(
         db,
         public_id=video_public_id,
         requesting_user_id=current_user.id
@@ -74,6 +77,7 @@ async def create_update_reaction(
                 extra={"video_id": video.id, "user_id": current_user.id}
             )
         raise HTTPException(status_code=503, detail="Could not queue reaction. Please retry.")
+    return ReactionResponse(video_public_id=video.public_id_str, likes_count=new_count)
 
 
 @router.delete(
@@ -89,7 +93,7 @@ async def delete_reaction(
     redis: Redis = Depends(get_redis)
 ):
     counter = LikeCounter(redis=redis, db=db)
-    video = get_video_by_public_id(
+    video = await get_video_by_public_id(
         db,
         public_id=video_public_id,
         requesting_user_id=current_user.id
@@ -128,3 +132,33 @@ async def delete_reaction(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not queue reaction removal. Please retry.",
         )
+    return ReactionResponse(video_public_id=video.public_id_str, likes_count=new_count)
+    
+
+# View Endpoints
+@router.post(
+    "/{video_public_id}/view",
+    status_code=status.HTTP_200_OK
+)
+async def view_video(
+        current_user: User = Depends(get_current_user_from_cookie),
+        db: Session = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        video_public_id: str = Path(...),
+):
+    counter = ViewCounter(redis=redis, db=db)
+    video = await get_video_by_public_id(
+        db,
+        public_id=video_public_id,
+        requesting_user_id=current_user.id
+    )
+    try:
+        await counter.increment(video.id, current_user.id)
+    except RedisError as exc:
+        # Redis is down → fail fast, UI must rollback optimistic update
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Like service temporarily unavailable. Please retry.",
+        ) from exc
+ 
+    return {"message": "View submitted"}
