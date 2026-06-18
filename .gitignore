@@ -137,3 +137,7 @@ __pypackages__/
 
 # minio
 minio/*
+
+
+# Celery
+celerybeat-schedule*
