@@ -40,3 +40,4 @@ class User(Base):
 
     channel = relationship("Channel", back_populates="user", uselist=False)
     comments = relationship("Comment", back_populates="user")
+    reactions = relationship("VideoReaction", back_populates="user")
