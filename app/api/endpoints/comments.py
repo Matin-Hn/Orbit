@@ -11,7 +11,7 @@ from app.schemas.comment import (
     CommentListResponse,
     CommentApprove
 )
-from app.services.auth_service import get_current_user_from_cookie, get_current_channel
+from app.services.auth_service import get_current_user_from_cookie, get_current_channel, get_optional_current_user_from_cookie
 from app.services.comment_service import CommentService
 from app.services.video_service import get_video_by_public_id
 from app.models.user import User
@@ -54,7 +54,7 @@ async def get_video_comments(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     sort_by: Literal["newest", "popular"] = Query("newest", description="Sort order for comments"),
-    current_user: Optional[User] = Depends(get_current_user_from_cookie),
+    current_user: Optional[User] = Depends(get_optional_current_user_from_cookie),
     db: Session = Depends(get_db),
     comment_service: CommentService = Depends(get_comment_service)
 ):
@@ -62,14 +62,15 @@ async def get_video_comments(
     Get all root comments for a video with pagination.
     **Public access** - Unapproved comments are hidden from regular users
     """
-    video = get_video_by_public_id(db, public_id=public_id, requesting_user_id=current_user.id if current_user else None)
-    return comment_service.get_video_comments(
+    video = await get_video_by_public_id(db, public_id=public_id, requesting_user_id=current_user.id if current_user else None)
+    comments = await comment_service.get_video_comments(
         video_id=video.id,
         page=page,
         per_page=per_page,
         sort_by = sort_by,
         current_user=current_user if current_user else None
     )
+    return comments
 
 @router.get("/{comment_id}/replies", response_model=CommentListResponse)
 async def get_comment_replies(
