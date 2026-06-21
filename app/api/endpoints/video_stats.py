@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path
 from app.models.user import User
 from app.models.video_reaction import ReactionType
 from app.schemas.reaction import ReactionResponse
-from app.schemas.video_stats import VideoStatsResponse
 from app.services.auth_service import get_current_user_from_cookie
 from app.services.video_service import get_video_by_public_id
 from app.services.video_stats_counter import LikeCounter, ViewCounter
