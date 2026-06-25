@@ -2,7 +2,8 @@
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
+
 from app.models.video import Video
 from app.models.video_public_id import VideoPublicId
 
@@ -11,12 +12,10 @@ class CRUDVideo:
         self.model = model
 
     async def get(self, db: AsyncSession, id: int) -> Optional[Video]:
-        """Get video by ID"""
         result = await db.execute(
-            select(self.model).filter(
-                self.model.id == id,
-                self.model.deleted_at.is_(None)
-            )
+            select(Video)
+            .options(selectinload(Video.channel))
+            .where(Video.id == id)
         )
         return result.scalar_one_or_none()
 
@@ -24,11 +23,11 @@ class CRUDVideo:
         result = await db.execute(
             select(Video)
             .join(VideoPublicId, VideoPublicId.internal_id == Video.id)
-            .options(joinedload(Video.public_id))
+            .options(joinedload(Video.public_id), joinedload(Video.stats))
             .filter(VideoPublicId.public_id == public_id)
             .filter(Video.deleted_at.is_(None))  # soft-delete guard
         )
-        return result.scalar_one_or_none()
+        return result.unique().scalar_one_or_none()
 
     async def get_published(self, db: AsyncSession, id: int) -> Optional[Video]:
         """Get published video by ID"""

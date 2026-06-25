@@ -76,7 +76,7 @@ class Video(Base):
     category = relationship("Category", back_populates="videos")
     comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
     public_id = relationship("VideoPublicId", back_populates="video", uselist=False)
-    stats = relationship("VideoStats", back_populates="video")
+    stats = relationship("VideoStats", back_populates="video", uselist=False)
     reactions = relationship("VideoReaction", back_populates="video")
 
     

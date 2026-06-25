@@ -191,7 +191,13 @@ async def complete_upload(
     await create_public_id(db, internal_id=db_video.id)
 
     await db.commit()
-    await db.refresh(db_video)
+    # `db.refresh()` with no `attribute_names` only reloads column attributes,
+    # not relationships. `db_video.public_id` (loaded via the `public_id_str`
+    # property below) was created via create_public_id() as a separate object
+    # after `db_video` was flushed, so the relationship is still unloaded.
+    # Accessing it would trigger a lazy-load on the async session, raising
+    # sqlalchemy.exc.MissingGreenlet. Explicitly include it here instead.
+    await db.refresh(db_video, attribute_names=["public_id"])
 
     # Trigger Celery task
     transcode_video_task.delay(
@@ -226,6 +232,16 @@ async def get_video_signed_manifest_url(
     #    - Owner (channel owner) can always access
     #    - Public videos are accessible to any authenticated user
     #    - Unlisted / scheduled videos are treated as private for simplicity
+    #
+    # `video.channel` is a lazily-loaded relationship. Accessing it directly
+    # here (after the await above has returned) triggers a synchronous
+    # lazy-load on what is actually an AsyncSession, which raises
+    # sqlalchemy.exc.MissingGreenlet ("greenlet_spawn has not been called").
+    # Explicitly awaiting db.refresh(..., attribute_names=["channel"]) loads
+    # the relationship safely within an async context before we touch it.
+    if "channel" not in video.__dict__:
+        await db.refresh(video, attribute_names=["channel"])
+
     is_owner = video.channel.user_id == current_user.id
     if not is_owner and video.visibility != "public":
         raise HTTPException(status_code=403, detail="You do not have permission to view this video")
@@ -287,6 +303,18 @@ async def websocket_video_status(
 
     user_id = payload.get("sub") or payload.get("user_id")
     if not user_id:
+        await websocket.send_json({"type": "auth_error", "message": "Token malformed"})
+        await websocket.close(code=4001)
+        return
+
+    # JWT claims (e.g. "sub") are always strings, but User.id is an integer
+    # column. Comparing them without casting sends the param as ::VARCHAR
+    # and Postgres has no integer = varchar operator, raising
+    # UndefinedFunctionError. Cast explicitly, and treat a non-numeric sub
+    # as a malformed/tampered token rather than letting the query 500.
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
         await websocket.send_json({"type": "auth_error", "message": "Token malformed"})
         await websocket.close(code=4001)
         return

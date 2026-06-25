@@ -1,6 +1,6 @@
 # app/api/v1/endpoints/comments.py
 from fastapi import APIRouter, Depends, Query, Path, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Literal
 
 from app.api.deps import get_db
@@ -19,23 +19,24 @@ from app.models.channel import Channel
 
 router = APIRouter(prefix="/comments", tags=["comments"])
 
-def get_comment_service(db: Session = Depends(get_db)) -> CommentService:
+def get_comment_service(db: AsyncSession = Depends(get_db)) -> CommentService:
     return CommentService(db)
 
 @router.post("/", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
 async def create_comment(
     comment_data: CommentCreate,
     current_user: User = Depends(get_current_user_from_cookie),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     """
     Create a new comment or reply to an existing comment.
     **Requires authentication**
     """
-    video = get_video_by_public_id(db, comment_data.public_id, current_user)
+    video = await get_video_by_public_id(db, comment_data.public_id, current_user)
     comment_data.video_id = video.id
-    return comment_service.create_comment(comment_data, current_user)
+    response = await comment_service.create_comment(comment_data, current_user)
+    return response
 
 @router.get("/{comment_id}", response_model=CommentResponse)
 async def get_comment(
@@ -46,7 +47,7 @@ async def get_comment(
     Get a specific comment by ID.
     **Public access**
     """
-    return comment_service.get_comment(comment_id)
+    return await comment_service.get_comment(comment_id)
 
 @router.get("/video/{public_id}", response_model=CommentListResponse)
 async def get_video_comments(
@@ -55,7 +56,7 @@ async def get_video_comments(
     per_page: int = Query(20, ge=1, le=100),
     sort_by: Literal["newest", "popular"] = Query("newest", description="Sort order for comments"),
     current_user: Optional[User] = Depends(get_optional_current_user_from_cookie),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     """
@@ -83,7 +84,7 @@ async def get_comment_replies(
     Get replies for a specific comment with pagination.
     **Public access**
     """
-    return comment_service.get_comment_replies(comment_id, page, per_page)
+    return await comment_service.get_comment_replies(comment_id, page, per_page)
 
 @router.put("/{comment_id}", response_model=CommentResponse)
 async def update_comment(
@@ -100,7 +101,7 @@ async def update_comment(
     - Superuser can edit any field
     - Only channel owner or admin can change approval/pin status
     """
-    return comment_service.update_comment(comment_id, update_data, current_user)
+    return await comment_service.update_comment(comment_id, update_data, current_user)
 
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_comment(
@@ -115,7 +116,7 @@ async def delete_comment(
     - Channel owner
     - Superuser
     """
-    comment_service.delete_comment(comment_id, current_user)
+    await comment_service.delete_comment(comment_id, current_user)
 
 @router.post("/{comment_id}/approve", response_model=CommentResponse)
 async def approve_comment(
@@ -130,4 +131,4 @@ async def approve_comment(
     - Admin
     - Superuser
     """
-    return comment_service.approve_comment(comment_id, current_user)
+    return await comment_service.approve_comment(comment_id, current_user)
