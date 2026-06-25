@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 from enum import Enum
 
 class VisibilityEnum(str, Enum):
@@ -67,7 +67,7 @@ class VideoResponse(BaseModel):
     id: int
     status: str
     title: str
-    description: str
+    description: Optional[str]
     channel_name: str
     duration_seconds: Optional[int]
     thumbnail_url: Optional[str]
@@ -81,6 +81,7 @@ class VideoResponse(BaseModel):
     created_at: datetime
     channel_id: int
     file_url: str
+    like_count: int = 0
     published_at: Optional[datetime] = None
     updated_at: datetime
     
@@ -94,6 +95,7 @@ class VideoDetailResponse(VideoResponse):
     view_count: int = 0
     like_count: int = 0
     comment_count: int = 0
+    current_user_reaction: Optional[Literal["like", "dislike"]] = None
     
     # Video availability
     is_published: bool
