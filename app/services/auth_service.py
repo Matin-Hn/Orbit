@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 import uuid
 import jwt
 from jwt.exceptions import DecodeError, InvalidSignatureError, ExpiredSignatureError
@@ -86,7 +86,23 @@ async def get_current_user_from_cookie(
             detail="Not authenticated"
         )
 
-    # Same decoding logic as above
+    return await _decode_token_and_get_user(token, db)
+
+
+async def get_optional_current_user_from_cookie(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """Extract JWT from cookie if available, otherwise return None."""
+
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+
+    return await _decode_token_and_get_user(token, db)
+
+
+async def _decode_token_and_get_user(token: str, db: AsyncSession) -> User:
     try:
         payload = jwt.decode(
             token,
@@ -115,7 +131,6 @@ async def get_current_user_from_cookie(
     except InvalidSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, invalid signature")
     except ExpiredSignatureError:
-
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication error, token expired")
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Authentication error, {e}")
