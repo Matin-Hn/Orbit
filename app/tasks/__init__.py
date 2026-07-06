@@ -1,2 +1,3 @@
 from app.tasks.video_tasks import transcode_video_task
 from app.tasks.reactions_tasks import upsert_video_reaction
+from app.tasks.video_stats_tasks import flush_video_stats

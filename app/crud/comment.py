@@ -1,15 +1,27 @@
 # app/crud/comment.py
 from typing import List, Optional, Tuple, Literal
 from sqlalchemy import select, and_, func, desc
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.comment import Comment
+from app.models.video_stats import VideoStats
 from app.schemas.comment import CommentCreate, CommentUpdate
 
 
 class CRUDComment:
     def __init__(self, model=Comment):
         self.model = model
+
+    async def _adjust_comment_count(self, db: AsyncSession, video_id: int, delta: int):
+        await db.execute(
+            pg_insert(VideoStats)
+            .values(video_id=video_id, comments_count=delta)
+            .on_conflict_do_update(
+                index_elements=["video_id"],
+                set_={"comments_count": VideoStats.comments_count + delta}
+            )
+        )
 
     async def get(self, db: AsyncSession, id: int) -> Optional[Comment]:
         result = await db.execute(
@@ -123,6 +135,8 @@ class CRUDComment:
             is_approved=False  # New comments need approval by default
         )
         db.add(db_obj)
+        await db.flush()
+        await self._adjust_comment_count(db, db_obj.video_id, 1)
         await db.commit()
         await db.refresh(db_obj)
         return db_obj
@@ -152,10 +166,13 @@ class CRUDComment:
         return db_obj
 
     async def soft_delete(self, db: AsyncSession, *, comment: Comment) -> Comment:
-        comment.deleted_at = func.now()
-        db.add(comment)
-        await db.commit()
-        await db.refresh(comment)
+        if comment.deleted_at is None:
+            comment.deleted_at = func.now()
+            db.add(comment)
+            await db.flush()
+            await self._adjust_comment_count(db, comment.video_id, -1)
+            await db.commit()
+            await db.refresh(comment)
         return comment
 
     async def approve_comment(self, db: AsyncSession, *, comment: Comment) -> Comment:

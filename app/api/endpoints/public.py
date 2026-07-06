@@ -9,7 +9,7 @@ from app.schemas.video import VideoDetailResponse
 from app.models.user import User
 from app.services.auth_service import get_optional_current_user_from_cookie
 from app.services.video_service import get_video_by_public_id
-from app.services.video_stats_counter import LikeCounter
+from app.services.video_stats_counter import VideoStatsCounter
 from app.crud.reaction import reaction as reaction_crud
 from app.core.redis import get_redis
 
@@ -45,7 +45,7 @@ async def get_video(
         if user_reaction:
             current_user_reaction = user_reaction.type.value
 
-    like_count = await LikeCounter(redis=redis, db=db).get(video.id)
+    like_count = await VideoStatsCounter(redis=redis, db=db).likes.get(video.id)
 
     # Return all fields required by VideoDetailResponse
     return VideoDetailResponse(   

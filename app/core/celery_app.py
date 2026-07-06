@@ -9,7 +9,7 @@ celery_app = Celery(
     include=[
         'app.tasks.video_tasks',
         'app.tasks.reactions_tasks',
-        'app.tasks.view_tasks'
+        'app.tasks.video_stats_tasks'
     ]
 )
 
@@ -25,8 +25,8 @@ celery_app.conf.update(
 )
 
 celery_app.conf.beat_schedule = {
-    "flush-view-counters": {
-        "task": "flush_view_counters",
+    "flush_video_stats": {
+        "task": "flush_video_stats",
         "schedule": 45.0,  # every 45s
     },
 }

@@ -9,12 +9,14 @@ from app.schemas.comment import CommentCreate, CommentUpdate, CommentResponse, C
 from app.models.user import User
 from app.models.channel import Channel
 from app.models.video import Video
+from app.services.video_stats_service import VideoStatsService
 from app.services.authorization_service import AuthorizationService
 
 class CommentService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.auth_service = AuthorizationService(db)
+        self._stats = VideoStatsService(db)                       
     
     def _to_response(self, comment) -> CommentResponse:
         # Get username from the user relationship only if it is already present
@@ -75,12 +77,12 @@ class CommentService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot reply to a reply. Only one level of nesting allowed."
                 )
-        
         comment = await comment_crud.create(
             self.db, 
             obj_in=comment_data, 
             user_id=current_user.id
         )
+        await self._stats.increment_comments(comment_data.video_id)
         
         return self._to_response(comment)
     
@@ -235,7 +237,7 @@ class CommentService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to delete this comment"
             )
-        
+        await self._stats.decrement_comments(comment.video_id)
         await comment_crud.soft_delete(self.db, comment=comment)
     
     async def approve_comment(
