@@ -20,16 +20,17 @@ async def get_video_by_public_id(
     if video.visibility == VideoVisibility.PUBLIC:
         return video
 
-    # Private and unlisted require the requester to own the video (or be authenticated at minimum)
+    # Private and unlisted require the requester to be authenticated
     if requesting_user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
     if video.visibility == VideoVisibility.PRIVATE:
-        # Only the channel owner can see their own private videos
-        # Assumes Channel model has an owner_user_id — adjust to your field name
-        if video.channel.owner_user_id != requesting_user_id:
+        if "channel" not in video.__dict__:
+            await db.refresh(video, attribute_names=["channel"])
+        # Fixed: Channel model uses `user_id`, not `owner_user_id`
+        if video.channel.user_id != requesting_user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    # Unlisted: authenticated users can access via direct link — no ownership check needed
+    # Unlisted: any authenticated user with the link can access — no ownership check needed
 
     return video
