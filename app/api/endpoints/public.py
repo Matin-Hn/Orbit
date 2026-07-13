@@ -26,7 +26,7 @@ async def get_video(
     Get complete video details including HLS manifest URL, thumbnail, etc.
     """
 
-    video = await get_video_by_public_id(db, public_id, current_user)
+    video = await get_video_by_public_id(db, public_id, current_user.id if current_user else None)
 
     # `video.channel` is a lazily-loaded relationship. Accessing it directly
     # here (after the await above has returned) triggers a synchronous

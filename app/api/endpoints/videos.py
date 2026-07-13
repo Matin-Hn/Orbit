@@ -2,6 +2,7 @@ import asyncio
 import uuid
 import jwt
 import logging
+from typing import Optional
 from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSoc
 from app.services.auth_service import (
     get_current_user_from_cookie,
     get_current_channel,
+    get_optional_current_user_from_cookie,
     create_access_token
 )
 from app.api.deps import get_db
@@ -216,13 +218,13 @@ async def complete_upload(
 async def get_video_signed_manifest_url(
     public_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_from_cookie),
+    current_user: Optional[User] = Depends(get_optional_current_user_from_cookie),
 ):
     """
     Returns a short-lived signed URL for the HLS manifest (.m3u8).
     Only accessible if the video is ready and the user has viewing rights.
     """
-    video = await get_video_by_public_id(db, public_id, current_user.id)
+    video = await get_video_by_public_id(db, public_id, current_user.id if current_user else None)
 
     # 1. Video must be in 'ready' state
     if video.status != "ready":
@@ -242,9 +244,10 @@ async def get_video_signed_manifest_url(
     if "channel" not in video.__dict__:
         await db.refresh(video, attribute_names=["channel"])
 
-    is_owner = video.channel.user_id == current_user.id
+    is_owner = current_user is not None and video.channel.user_id == current_user.id
     if not is_owner and video.visibility != "public":
         raise HTTPException(status_code=403, detail="You do not have permission to view this video")
+
 
     # 3. Determine the S3 key of the HLS manifest.
     #    Based on the transcoding task, the manifest is stored at:
