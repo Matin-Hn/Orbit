@@ -23,6 +23,11 @@ async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     result = await db.execute(select(User).filter(User.email == email))
     return result.scalar_one_or_none()
 
+async def get_user_by_phone(db: AsyncSession, phone: str) -> Optional[User]:
+    """Get user by phone"""
+    result = await db.execute(select(User).filter(User.phone == phone))
+    return result.scalar_one_or_none()
+
 async def create_user(db: AsyncSession, user: UserCreate):
     """Create new user"""
     db_user = User(**user)

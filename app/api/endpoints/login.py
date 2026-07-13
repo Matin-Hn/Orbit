@@ -10,6 +10,7 @@ from app.crud.users import (
     get_user_by_id,
     get_user_by_username,
     get_user_by_email,
+    get_user_by_phone,
     create_user,
     authenticate
 )
@@ -46,6 +47,12 @@ async def register_user(
             detail="Email already registered"
         )        
     
+    existing_phone = await get_user_by_phone(db, request.phone)
+    if existing_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A user with this phone is already registered"
+        )        
     # Hash password
     password_hash = get_password_hash(request.password)
 
