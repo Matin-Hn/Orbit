@@ -13,9 +13,13 @@ from app.schemas.channel import (
     ChannelListResponse
 )
 from app.services.auth_service import get_current_user_from_cookie
+from app.services.channel_service import ChannelService
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
+
+def get_channel_service(db: AsyncSession = Depends(get_db)) -> ChannelService:
+    return ChannelService(db)
 
 # CREATE - POST /channels
 @router.post(
@@ -27,7 +31,8 @@ router = APIRouter(prefix="/channels", tags=["channels"])
 async def create_channel(
     channel: ChannelCreate,
     current_user: User = Depends(get_current_user_from_cookie),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    channel_service: ChannelService = Depends(get_channel_service)
 ):
     """
     Create a new channel with the provided data.
@@ -36,48 +41,9 @@ async def create_channel(
     - **handle**: Unique channel handle with alphanumeric characters and underscores only
     - **user_id**: Owner user ID (must exist and not have another channel)
     """
-    # Check if handle already exists
-    result = await db.execute(select(Channel).filter(Channel.handle == channel.handle))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Channel with handle '{channel.handle}' already exists"
-        )
-
-    # Check if name already exists
-    result = await db.execute(select(Channel).filter(Channel.name == channel.name))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Channel with name '{channel.name}' already exists"
-        )
-
-    # Check if user already has a channel
-    result = await db.execute(select(Channel).filter(Channel.user_id == current_user.id))
-    channel_existing = result.scalar_one_or_none()
-    if channel_existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"You already have a channel {channel_existing.name}"
-        )
-
-    # Add user_id manually
-    channel_dict = channel.model_dump()
-
-    # Convert HttpUrl objects to strings
-    for field in ['avatar_url', 'banner_url', 'website']:
-        if channel_dict.get(field):
-            channel_dict[field] = str(channel_dict[field])
-
-    channel_dict["user_id"] = current_user.id
-    # Create new channel
-    db_channel = Channel(**channel_dict)
-    db.add(db_channel)
-    await db.commit()
-    await db.refresh(db_channel)
-
-    return db_channel
-
+    
+    response = await channel_service.create_channel(channel, current_user)
+    return response
 
 @router.get(
     "/{handle}",
@@ -180,7 +146,9 @@ async def list_channels(
 async def update_channel(
     channel_id: int,
     channel_update: ChannelUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_cookie),
+    channel_service: ChannelService = Depends(get_channel_service)
 ):
     """
     Update an existing channel partially or fully.
@@ -189,43 +157,9 @@ async def update_channel(
     - **channel_id**: The ID of the channel to update
     - Fields to update (all optional)
     """
-    # Find the channel
-    result = await db.execute(select(Channel).filter(Channel.id == channel_id))
-    channel = result.scalar_one_or_none()
-    if not channel:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Channel with ID {channel_id} not found"
-        )
 
-    # Get only the fields that were actually provided
-    update_data = channel_update.model_dump(exclude_unset=True)
-
-    # Check unique constraints if handle or name are being updated
-    if "handle" in update_data and update_data["handle"] != channel.handle:
-        result = await db.execute(select(Channel).filter(Channel.handle == update_data["handle"]))
-        if result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Channel with handle '{update_data['handle']}' already exists"
-            )
-
-    if "name" in update_data and update_data["name"] != channel.name:
-        result = await db.execute(select(Channel).filter(Channel.name == update_data["name"]))
-        if result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Channel with name '{update_data['name']}' already exists"
-            )
-
-    # Update the channel
-    for field, value in update_data.items():
-        setattr(channel, field, value)
-
-    await db.commit()
-    await db.refresh(channel)
-
-    return channel
+    response = await channel_service.update_channel(channel_id, channel_update, current_user)
+    return response
 
 
 # DELETE - DELETE /channels/{channel_id}
