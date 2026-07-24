@@ -106,7 +106,10 @@ async def login_user(
             **cookie_config
         )
 
-        return {"Login was successful"}
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }
     except HTTPException:
         raise
     except Exception as e:
