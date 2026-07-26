@@ -9,7 +9,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     SECRET_KEY: str = "test-secret-key-for-ci"
-    SQLALCHEMY_DATABASE_URL: str = "sqlite:///:memory:"
+    SQLALCHEMY_DATABASE_URL: str = "sqlite+aiosqlite:///:memory:"
     ALGORITHM: str = "HS256"
 
     # S3/MinIO
