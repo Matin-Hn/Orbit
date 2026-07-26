@@ -9,7 +9,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     SECRET_KEY: str
-    SQLALCHEMY_DATABASE_URL: str
+    SQLALCHEMY_DATABASE_URL: str = "sqlite:///:memory:"
     ALGORITHM: str
 
     # S3/MinIO

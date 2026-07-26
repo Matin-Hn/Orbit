@@ -36,21 +36,21 @@ async def register_user(
     existing_user = await get_user_by_username(db, request.username)
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Username already registered"
         )
     
     existing_email = await get_user_by_email(db, request.email)
     if existing_email:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Email already registered"
         )        
     
     existing_phone = await get_user_by_phone(db, request.phone)
     if existing_phone:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="A user with this phone is already registered"
         )        
     # Hash password
