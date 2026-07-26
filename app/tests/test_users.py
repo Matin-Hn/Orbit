@@ -8,7 +8,7 @@ your actual package layout if different.
 """
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from conftest import FakeUser
+from app.tests.conftest import FakeUser
 
 MODULE = "app.api.endpoints.users"
 
