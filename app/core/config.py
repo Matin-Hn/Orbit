@@ -8,30 +8,30 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
-    SECRET_KEY: str
+    SECRET_KEY: str = "test-secret-key-for-ci"
     SQLALCHEMY_DATABASE_URL: str = "sqlite:///:memory:"
-    ALGORITHM: str
+    ALGORITHM: str = "HS256"
 
     # S3/MinIO
-    S3_ENDPOINT: str
-    S3_PUBLIC_ENDPOINT: str
-    S3_ACCESS_KEY: str
-    S3_SECRET_KEY: str
-    S3_BUCKET_NAME: str
-    S3_REGION: str
-    S3_USE_PATH_STYLE: bool
-    S3_USE_SSL: bool
+    S3_ENDPOINT: str = "http://minio:9000"
+    S3_PUBLIC_ENDPOINT: str = "http://localhost:9000"
+    S3_ACCESS_KEY: str = "minioadmin"
+    S3_SECRET_KEY: str = "minioadmin123"
+    S3_BUCKET_NAME: str = "video-bucket"
+    S3_REGION: str = "us-east-1"
+    S3_USE_PATH_STYLE: bool = True
+    S3_USE_SSL: bool = False
 
     # Celery
     CELERY_BROKER_URL: str = "redis://redis:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://redis:6379/0"
 
     # Sprite image
-    SPRITE_INTERVAL: int
-    SPRITE_TILE_WIDTH: int
-    SPRITE_TILE_HEIGHT: int
-    SPRITE_COLUMNS: int
-    SPRITE_MAX_TILES: int
+    SPRITE_INTERVAL: int = 5
+    SPRITE_TILE_WIDTH: int = 160
+    SPRITE_TILE_HEIGHT: int = 90
+    SPRITE_COLUMNS: int = 10
+    SPRITE_MAX_TILES: int = 100
 
     # Redis for websocket pupsub
     REDIS_WS_PUBSUB: str = "redis://redis:6379/1"
