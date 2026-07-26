@@ -34,13 +34,17 @@ class ChannelResponse(BaseModel):
     id: int
     user_id: int
     name: str
+    handle: str                          # missing
     description: Optional[str] = None
     avatar_url: Optional[str] = None
     banner_url: Optional[str] = None
+    website: Optional[str] = None        # missing
+    contact_email: Optional[str] = None  # missing
     is_suspended: bool
+    verified_badge: bool                 # missing
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
